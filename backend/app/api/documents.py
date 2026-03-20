@@ -5,6 +5,7 @@ from sqlalchemy import select
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
+import asyncio
 import os
 
 from app.core.database import get_db
@@ -129,9 +130,14 @@ async def generate_aosr(request: GenerateAOSRRequest, db: AsyncSession = Depends
 
     file_path = document_generator.generate_aosr(project_dict, work_dict)
 
-    # AI-генерация текста через агента
+    # AI-генерация текста через агента (не блокирует, если API недоступен)
     doc_agent = get_agent("documentation_manager")
-    ai_content = await doc_agent.generate_aosr(project_dict, work_dict)
+    try:
+        ai_content = await asyncio.wait_for(
+            doc_agent.generate_aosr(project_dict, work_dict), timeout=25.0
+        )
+    except asyncio.TimeoutError:
+        ai_content = {"content_text": ""}
 
     doc = Document(
         project_id=project.id,

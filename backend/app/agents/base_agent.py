@@ -66,6 +66,7 @@ class BaseAgent(ABC):
                 max_tokens=max_tokens,
                 system=system,
                 messages=messages,
+                timeout=30.0,
             )
             return response.content[0].text
         except anthropic.APIConnectionError:
@@ -73,6 +74,8 @@ class BaseAgent(ABC):
             return self._offline_response(user_message, context)
         except anthropic.AuthenticationError:
             return "⚠️ Ошибка авторизации API. Проверьте ANTHROPIC_API_KEY."
+        except anthropic.APITimeoutError:
+            return self._offline_response(user_message, context)
         except Exception as e:
             return f"⚠️ Ошибка агента {self.name_ru}: {str(e)}"
 

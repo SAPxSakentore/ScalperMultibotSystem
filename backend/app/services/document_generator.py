@@ -194,7 +194,7 @@ class DocumentGenerator:
             doc.add_paragraph("Согласно проекту и сертификатам качества.")
 
         doc.add_heading("4. Нормативные документы:", level=2)
-        normatives = work_data.get("normatives", ["СП РК 2.04-103-2013*", "СП РК 1.04.02-2019"])
+        normatives = work_data.get("normatives") or ["ВСН 012-88", "СП РК 2.04-103-2013*", "СП РК 1.04.02-2019"]
         for norm in normatives:
             doc.add_paragraph(f"• {norm}", style="List Bullet")
 
@@ -215,9 +215,9 @@ class DocumentGenerator:
         rows = signs_table.rows
         roles = ["Технический надзор", "Авторский надзор", "Производитель работ"]
         names = [
-            project_data.get("technical_supervisor", ""),
-            work_data.get("author_supervisor", ""),
-            work_data.get("foreman", ""),
+            project_data.get("technical_supervisor") or "",
+            work_data.get("author_supervisor") or "",
+            work_data.get("foreman") or "",
         ]
         for i, (role, name) in enumerate(zip(roles, names)):
             r = signs_table.rows[i]
