@@ -206,11 +206,46 @@ async def generate_ks11(project_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{doc_id}/download")
-async def download_document(doc_id: str, db: AsyncSession = Depends(get_db)):
-    """Скачать документ."""
+async def download_document(
+    doc_id: str,
+    format: str = "docx",
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Скачать документ.
+    ?format=docx  — исходный DOCX (по умолчанию)
+    ?format=pdf   — PDF, сгенерированный на лету через ReportLab
+    """
+    from fastapi.responses import Response
+    from app.services.pdf_generator import render_document_as_pdf
+
     doc = await db.get(Document, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден")
+
+    if format == "pdf":
+        project = await db.get(Project, doc.project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Проект не найден")
+
+        project_dict = _project_to_dict(project)
+        content = doc.content_json or {}
+
+        pdf_bytes = render_document_as_pdf(
+            doc_type=doc.document_type.value,
+            project=project_dict,
+            content=content,
+        )
+
+        safe_title = doc.title.replace("/", "-").replace("\\", "-")[:80]
+        filename = f"{safe_title}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # DOCX
     if not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="Файл документа не найден")
     return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path))
