@@ -122,22 +122,17 @@ async def generate_ojr(request: GenerateOJRRequest, db: AsyncSession = Depends(g
 
 
 @router.post("/generate/aosr", response_model=DocumentResponse)
-async def generate_aosr(request: GenerateAOSRRequest, db: AsyncSession = Depends(get_db)):
+async def generate_aosr(
+    request: GenerateAOSRRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
     """Сгенерировать АОСР (Акт освидетельствования скрытых работ)."""
     project = await _get_project_or_404(request.project_id, db)
     project_dict = _project_to_dict(project)
     work_dict = request.model_dump(exclude={"project_id"})
 
     file_path = document_generator.generate_aosr(project_dict, work_dict)
-
-    # AI-генерация текста через агента (не блокирует, если API недоступен)
-    doc_agent = get_agent("documentation_manager")
-    try:
-        ai_content = await asyncio.wait_for(
-            doc_agent.generate_aosr(project_dict, work_dict), timeout=25.0
-        )
-    except asyncio.TimeoutError:
-        ai_content = {"content_text": ""}
 
     doc = Document(
         project_id=project.id,
@@ -147,7 +142,7 @@ async def generate_aosr(request: GenerateAOSRRequest, db: AsyncSession = Depends
         file_path=file_path,
         file_format="docx",
         auto_generated=True,
-        content_json={"ai_text": ai_content.get("content_text", ""), **work_dict},
+        content_json=work_dict,
         normative_refs=request.normatives or ["СП РК 1.04.02-2019", "СП РК 2.04-103-2013*"],
         status=DocumentStatus.DRAFT,
     )
