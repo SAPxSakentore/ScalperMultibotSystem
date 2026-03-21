@@ -132,6 +132,82 @@ async def get_itd_checklist(project_id: str, db: AsyncSession = Depends(get_db))
     return {"project_id": project_id, "project_type": project.project_type, "checklist": checklist}
 
 
+@router.delete("/{project_id}", status_code=204)
+async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
+    """Удалить проект (каскадно удаляет документы и рапорты)."""
+    from sqlalchemy import delete as sql_delete
+    from app.models.document import Document
+    from app.models.shift_report import ShiftReport, ProjectPdfUpload
+    import os
+
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+
+    # Удалить файлы документов
+    docs_result = await db.execute(select(Document).where(Document.project_id == project_id))
+    for doc in docs_result.scalars().all():
+        if doc.file_path and os.path.exists(doc.file_path):
+            os.remove(doc.file_path)
+
+    # Удалить PDF-загрузки
+    pdfs_result = await db.execute(select(ProjectPdfUpload).where(ProjectPdfUpload.project_id == project_id))
+    for pdf in pdfs_result.scalars().all():
+        if pdf.file_path and os.path.exists(pdf.file_path):
+            os.remove(pdf.file_path)
+
+    await db.execute(sql_delete(Document).where(Document.project_id == project_id))
+    await db.execute(sql_delete(ShiftReport).where(ShiftReport.project_id == project_id))
+    await db.execute(sql_delete(ProjectPdfUpload).where(ProjectPdfUpload.project_id == project_id))
+    await db.delete(project)
+
+
+@router.get("/{project_id}/export-itd")
+async def export_project_itd(project_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Экспорт полного пакета ИТД проекта в ZIP-архив.
+    Включает все сгенерированные DOCX-файлы.
+    """
+    import zipfile, io
+    from fastapi.responses import StreamingResponse
+    from app.models.document import Document
+    import os
+
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+
+    docs_result = await db.execute(
+        select(Document)
+        .where(Document.project_id == project_id)
+        .where(Document.file_path.isnot(None))
+        .order_by(Document.document_type, Document.created_at)
+    )
+    docs = docs_result.scalars().all()
+
+    zip_buffer = io.BytesIO()
+    added = 0
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc in docs:
+            if doc.file_path and os.path.exists(doc.file_path):
+                safe_title = doc.title.replace("/", "-").replace("\\", "-")[:60]
+                arc_name = f"{doc.document_type.value}/{safe_title}.docx"
+                with open(doc.file_path, "rb") as f:
+                    zf.writestr(arc_name, f.read())
+                added += 1
+
+    if added == 0:
+        raise HTTPException(status_code=404, detail="В проекте нет сгенерированных документов")
+
+    zip_buffer.seek(0)
+    filename = f"ITD_{project.code}_{datetime.now().strftime('%Y%m%d')}.zip"
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/{project_id}/generate-plan")
 async def generate_project_plan(project_id: str, db: AsyncSession = Depends(get_db)):
     """Сгенерировать план реализации проекта через PM-агента."""

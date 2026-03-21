@@ -22,10 +22,12 @@ export const projectsApi = {
   get: (id) => api.get(`/projects/${id}`),
   create: (data) => api.post('/projects', data),
   update: (id, data) => api.patch(`/projects/${id}`, data),
+  delete: (id) => api.delete(`/projects/${id}`),
   getItdChecklist: (id) => api.get(`/projects/${id}/itd-checklist`),
   generatePlan: (id) => api.post(`/projects/${id}/generate-plan`),
   analyzeRisks: (id) => api.post(`/projects/${id}/analyze-risks`),
   getProgress: (id) => api.get(`/projects/${id}/progress`),
+  exportItd: (id) => `/api/projects/${id}/export-itd`,
 }
 
 export const documentsApi = {
@@ -35,8 +37,12 @@ export const documentsApi = {
   generateHydraulicTest: (data) => api.post('/documents/generate/hydraulic-test', data),
   generateKs11: (projectId) => api.post(`/documents/generate/ks11?project_id=${projectId}`),
   generateWeldingJournal: (data) => api.post('/documents/generate/welding-journal', data),
+  generateIsolationJournal: (data) => api.post('/documents/generate/isolation-journal', data),
+  generateGeodesyJournal: (data) => api.post('/documents/generate/geodesy-journal', data),
   generateKs2: (data) => api.post('/documents/generate/ks2', data),
+  generateKs3: (data) => api.post('/documents/generate/ks3', data),
   generatePurgeAct: (data) => api.post('/documents/generate/purge-act', data),
+  generateTightnessTest: (data) => api.post('/documents/generate/tightness-test', data),
   generatePpr: (data) => api.post('/documents/generate/ppr', data),
   generateTechCard: (data) => api.post('/documents/generate/tech-card', data),
   generateTechCardsBundle: (data) => api.post('/documents/generate/tech-cards-bundle', data, { responseType: 'blob' }),

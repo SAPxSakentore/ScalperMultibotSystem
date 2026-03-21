@@ -395,6 +395,297 @@ class DocumentGenerator:
 
         return self._save_document(doc, "KS11", project_data.get("code", "PROJ"))
 
+    def generate_isolation_journal(self, project_data: Dict, entries: List = None) -> str:
+        """
+        Журнал производства изоляционных работ.
+        ГОСТ 9.602-2016, ВСН 012-88 ч.II
+        """
+        doc = Document()
+        section = doc.sections[0]
+        section.page_width  = Cm(29.7)
+        section.page_height = Cm(21.0)
+        section.left_margin = Cm(2.0)
+        section.right_margin = Cm(1.0)
+
+        title = doc.add_heading("ЖУРНАЛ ПРОИЗВОДСТВА ИЗОЛЯЦИОННЫХ РАБОТ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph("(ГОСТ 9.602-2016, ВСН 012-88 ч.II)").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph()
+
+        info = doc.add_table(rows=6, cols=2)
+        info.style = "Table Grid"
+        _set_table_borders(info)
+        for i, (lbl, val) in enumerate([
+            ("Наименование объекта:", project_data.get("name", "")),
+            ("Шифр проекта:", project_data.get("code", "")),
+            ("Заказчик:", project_data.get("customer_name", "")),
+            ("Подрядчик:", project_data.get("contractor_name", "")),
+            ("Диаметр трубопровода:", f"DN{project_data.get('diameter_mm', '—')} мм"),
+            ("Нормативный документ:", "ГОСТ 9.602-2016, ВСН 012-88 ч.II"),
+        ]):
+            r = info.rows[i]
+            r.cells[0].text = lbl
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = str(val) if val else "—"
+
+        doc.add_paragraph()
+
+        tbl = doc.add_table(rows=1, cols=10)
+        tbl.style = "Table Grid"
+        _set_table_borders(tbl)
+        headers = [
+            "№ п/п", "Дата", "ПК (пикет)", "Вид покрытия", "Тип ленты/мат-ла",
+            "Толщина покрытия, мм", "Напряжение дефектоскопа, В", "Результат контроля",
+            "Температура, °C", "Исполнитель",
+        ]
+        hrow = tbl.rows[0]
+        for j, h in enumerate(headers):
+            hrow.cells[j].text = h
+            hrow.cells[j].paragraphs[0].runs[0].bold = True
+            hrow.cells[j].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        for idx, e in enumerate(entries or [], 1):
+            row = tbl.add_row()
+            row.cells[0].text  = str(idx)
+            row.cells[1].text  = e.get("date", "")
+            row.cells[2].text  = e.get("chainage", "")
+            row.cells[3].text  = e.get("coating_type", "2-слойная ПЭ лента")
+            row.cells[4].text  = e.get("material", "")
+            row.cells[5].text  = e.get("thickness_mm", "")
+            row.cells[6].text  = e.get("spark_test_v", "5000")
+            row.cells[7].text  = e.get("result", "Удовл.")
+            row.cells[8].text  = e.get("temp_c", "")
+            row.cells[9].text  = e.get("executor", "")
+
+        if not entries:
+            tbl.add_row()
+
+        doc.add_paragraph()
+        doc.add_paragraph("Мастер изоляционных работ: _________________ / _________________ / «___» ________ ___ г.")
+
+        return self._save_document(doc, "IsolationJournal", project_data.get("code", "PROJ"))
+
+    def generate_geodesy_journal(self, project_data: Dict, entries: List = None) -> str:
+        """
+        Геодезический журнал производства работ.
+        СНиП РК 3.01.01-2008*, СП РК 1.04.02-2019
+        """
+        doc = Document()
+        section = doc.sections[0]
+        section.page_width  = Cm(29.7)
+        section.page_height = Cm(21.0)
+        section.left_margin = Cm(2.0)
+        section.right_margin = Cm(1.0)
+
+        title = doc.add_heading("ГЕОДЕЗИЧЕСКИЙ ЖУРНАЛ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph("(СНиП РК 3.01.01-2008*, СП РК 1.04.02-2019)").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph()
+
+        info = doc.add_table(rows=5, cols=2)
+        info.style = "Table Grid"
+        _set_table_borders(info)
+        for i, (lbl, val) in enumerate([
+            ("Наименование объекта:", project_data.get("name", "")),
+            ("Шифр проекта:", project_data.get("code", "")),
+            ("Заказчик:", project_data.get("customer_name", "")),
+            ("Подрядчик:", project_data.get("contractor_name", "")),
+            ("Ответственный геодезист:", "___________________"),
+        ]):
+            r = info.rows[i]
+            r.cells[0].text = lbl
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = str(val) if val else "—"
+
+        doc.add_paragraph()
+
+        tbl = doc.add_table(rows=1, cols=9)
+        tbl.style = "Table Grid"
+        _set_table_borders(tbl)
+        headers = [
+            "№ п/п", "Дата", "№ разбивочного элемента", "ПК (пикет)",
+            "Координата X", "Координата Y", "Отметка (Z), м",
+            "Отклонение от проекта", "Примечание",
+        ]
+        hrow = tbl.rows[0]
+        for j, h in enumerate(headers):
+            hrow.cells[j].text = h
+            hrow.cells[j].paragraphs[0].runs[0].bold = True
+            hrow.cells[j].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        for idx, e in enumerate(entries or [], 1):
+            row = tbl.add_row()
+            row.cells[0].text = str(idx)
+            row.cells[1].text = e.get("date", "")
+            row.cells[2].text = e.get("element_no", "")
+            row.cells[3].text = e.get("chainage", "")
+            row.cells[4].text = e.get("x", "")
+            row.cells[5].text = e.get("y", "")
+            row.cells[6].text = e.get("z", "")
+            row.cells[7].text = e.get("deviation", "в норме")
+            row.cells[8].text = e.get("note", "")
+
+        if not entries:
+            tbl.add_row()
+
+        doc.add_paragraph()
+        doc.add_paragraph("Геодезист: _________________ / _________________ / «___» ________ ___ г.")
+
+        return self._save_document(doc, "GeodesyJournal", project_data.get("code", "PROJ"))
+
+    def generate_ks3(self, project_data: Dict, ks3_data: Dict) -> str:
+        """
+        Справка о стоимости выполненных работ и затрат (КС-3).
+        Форма утверждена приказом МФ РК.
+        """
+        doc = Document()
+
+        title = doc.add_heading("СПРАВКА О СТОИМОСТИ ВЫПОЛНЕННЫХ РАБОТ И ЗАТРАТ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sub = doc.add_paragraph("(Форма КС-3)")
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"г. {project_data.get('region', '')}    «___» _________ {datetime.now().year} г."
+        )
+        doc.add_paragraph()
+
+        req = doc.add_table(rows=5, cols=2)
+        req.style = "Table Grid"
+        _set_table_borders(req)
+        for i, (lbl, val) in enumerate([
+            ("Заказчик:", project_data.get("customer_name", "")),
+            ("Подрядчик:", project_data.get("contractor_name", "")),
+            ("Объект:", project_data.get("name", "")),
+            ("Отчётный период:", ks3_data.get("period", "________________")),
+            ("Номер договора подряда:", ks3_data.get("contract_number", "_______________")),
+        ]):
+            r = req.rows[i]
+            r.cells[0].text = lbl
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_heading("Стоимость выполненных работ:", level=2)
+
+        cost_tbl = doc.add_table(rows=1, cols=5)
+        cost_tbl.style = "Table Grid"
+        _set_table_borders(cost_tbl)
+        for j, h in enumerate(["№", "Наименование затрат", "Сметная стоимость, тг.", "С начала строительства, тг.", "В т.ч. за отчётный период, тг."]):
+            cost_tbl.rows[0].cells[j].text = h
+            cost_tbl.rows[0].cells[j].paragraphs[0].runs[0].bold = True
+
+        items = ks3_data.get("items", [])
+        total_period = 0.0
+        for idx, item in enumerate(items, 1):
+            row = cost_tbl.add_row()
+            period_amt = float(item.get("period_amount", 0) or 0)
+            total_period += period_amt
+            row.cells[0].text = str(idx)
+            row.cells[1].text = item.get("name", "")
+            row.cells[2].text = f"{float(item.get('budget_amount', 0) or 0):,.2f}"
+            row.cells[3].text = f"{float(item.get('cumulative_amount', 0) or 0):,.2f}"
+            row.cells[4].text = f"{period_amt:,.2f}"
+
+        if not items:
+            cost_tbl.add_row()
+            total_period = float(ks3_data.get("total_period", 0) or 0)
+
+        total_row = cost_tbl.add_row()
+        total_row.cells[1].text = "ИТОГО:"
+        total_row.cells[1].paragraphs[0].runs[0].bold = True
+        total_row.cells[4].text = f"{total_period:,.2f} тг."
+        total_row.cells[4].paragraphs[0].runs[0].bold = True
+
+        doc.add_paragraph()
+        nds = total_period * 0.12
+        doc.add_paragraph(
+            f"В том числе НДС (12%): {nds:,.2f} тг.\n"
+            f"Итого с НДС: {total_period + nds:,.2f} тг."
+        ).runs[0].bold = True
+
+        doc.add_paragraph()
+        sig = doc.add_table(rows=2, cols=3)
+        sig.style = "Table Grid"
+        _set_table_borders(sig)
+        for i, (role, key) in enumerate([("Сдал (Подрядчик):", "contractor_name"), ("Принял (Заказчик):", "customer_name")]):
+            sig.rows[i].cells[0].text = role
+            sig.rows[i].cells[1].text = project_data.get(key, "")
+            sig.rows[i].cells[2].text = "____________ М.П."
+
+        return self._save_document(doc, "KS3", project_data.get("code", "PROJ"))
+
+    def generate_tightness_test_act(self, project_data: Dict, test_data: Dict) -> str:
+        """
+        Акт испытания на герметичность трубопровода.
+        ГОСТ 24054-80, СП РК 2.04-103-2013* п.10
+        """
+        doc = Document()
+
+        title = doc.add_heading("АКТ ИСПЫТАНИЯ ТРУБОПРОВОДА НА ГЕРМЕТИЧНОСТЬ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"Объект: {project_data.get('name', '')}\n"
+            f"Подрядчик: {project_data.get('contractor_name', '')}\n"
+            f"Заказчик: {project_data.get('customer_name', '')}\n"
+            f"Дата испытания: {test_data.get('test_date', datetime.now().strftime('%d.%m.%Y'))}"
+        )
+
+        doc.add_paragraph()
+        doc.add_heading("Характеристики испытуемого участка:", level=2)
+        params = doc.add_table(rows=6, cols=2)
+        params.style = "Table Grid"
+        _set_table_borders(params)
+        for i, (lbl, val) in enumerate([
+            ("Участок (ПК):", test_data.get("section_chainage", "")),
+            ("Длина участка:", f"{test_data.get('length_m', '')} м"),
+            ("Диаметр:", f"DN{project_data.get('diameter_mm', '')} мм"),
+            ("Испытательная среда:", test_data.get("test_medium", "природный газ / воздух")),
+            ("Рабочее давление:", f"{project_data.get('working_pressure_mpa', '')} МПа"),
+            ("Испытательное давление:", f"{test_data.get('test_pressure_mpa', '')} МПа"),
+        ]):
+            params.rows[i].cells[0].text = lbl
+            params.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+            params.rows[i].cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_heading("Результаты испытания:", level=2)
+        results = doc.add_table(rows=4, cols=2)
+        results.style = "Table Grid"
+        _set_table_borders(results)
+        for i, (lbl, val) in enumerate([
+            ("Давление в начале испытания:", f"{test_data.get('pressure_start', '')} МПа"),
+            ("Давление в конце испытания:", f"{test_data.get('pressure_end', '')} МПа"),
+            ("Продолжительность выдержки:", f"{test_data.get('duration_hours', 24)} часов"),
+            ("Результат:", test_data.get("result", "УДОВЛЕТВОРИТЕЛЬНО — утечек не обнаружено")),
+        ]):
+            results.rows[i].cells[0].text = lbl
+            results.rows[i].cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            "ЗАКЛЮЧЕНИЕ: Трубопровод испытан на герметичность в соответствии с требованиями "
+            "ГОСТ 24054-80 и СП РК 2.04-103-2013*. Утечек и дефектов не обнаружено. "
+            "Трубопровод считается выдержавшим испытание на герметичность."
+        )
+        doc.add_paragraph("Нормативные документы: ГОСТ 24054-80, СП РК 2.04-103-2013* п.10")
+        doc.add_paragraph()
+
+        sig = doc.add_table(rows=2, cols=3)
+        sig.style = "Table Grid"
+        _set_table_borders(sig)
+        sig.rows[0].cells[0].text = "Производитель работ:"
+        sig.rows[0].cells[1].text = test_data.get("foreman", "")
+        sig.rows[0].cells[2].text = "____________"
+        sig.rows[1].cells[0].text = "Технический надзор:"
+        sig.rows[1].cells[1].text = project_data.get("technical_supervisor", "")
+        sig.rows[1].cells[2].text = "____________"
+
+        return self._save_document(doc, "TightnessTest", project_data.get("code", "PROJ"))
+
     def generate_welding_journal(self, project_data: Dict, entries: List = None) -> str:
         """
         Журнал производства сварочных работ.

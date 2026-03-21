@@ -5,7 +5,7 @@ import { projectsApi, documentsApi, shiftReportsApi } from '../utils/api'
 import {
   FileText, Loader2, CheckSquare, BarChart2, AlertTriangle,
   ClipboardList, Upload, Trash2, BookOpen, ChevronDown, ChevronUp,
-  FileCheck, X, CheckCircle2, TrendingUp,
+  FileCheck, X, CheckCircle2, TrendingUp, Download, AlertOctagon,
 } from 'lucide-react'
 import TraceProgress from '../components/TraceProgress'
 
@@ -94,6 +94,12 @@ export default function ProjectDetail() {
     onSuccess: () => queryClient.invalidateQueries(['documents', id]),
   })
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const deleteMutation = useMutation({
+    mutationFn: () => projectsApi.delete(id),
+    onSuccess: () => { window.location.href = '/projects' },
+  })
+
   if (isLoading) return <div className="text-center py-12 text-slate-400">Загрузка...</div>
   if (!project) return <div className="text-center py-12 text-red-400">Проект не найден</div>
 
@@ -121,13 +127,53 @@ export default function ProjectDetail() {
             )}
             <ProgressBadge projectId={id} />
           </div>
-          <Link
-            to={`/projects/${id}/shift-reports`}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors shrink-0"
-          >
-            <ClipboardList size={16} />
-            Сменные рапорты
-          </Link>
+          <div className="flex flex-col gap-2 shrink-0">
+            <Link
+              to={`/projects/${id}/shift-reports`}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors"
+            >
+              <ClipboardList size={16} />
+              Сменные рапорты
+            </Link>
+            <a
+              href={projectsApi.exportItd(id)}
+              target="_blank" rel="noreferrer"
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-colors"
+            >
+              <Download size={16} />
+              Экспорт ИТД (ZIP)
+            </a>
+            {!showDeleteConfirm ? (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
+              >
+                <Trash2 size={16} />
+                Удалить проект
+              </button>
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
+                <div className="flex items-center gap-1.5 text-red-700 text-xs font-medium">
+                  <AlertOctagon size={14} /> Удалить безвозвратно?
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                    className="flex-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deleteMutation.isPending ? 'Удаляю...' : 'Да, удалить'}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

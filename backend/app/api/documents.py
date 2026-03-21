@@ -76,6 +76,34 @@ class UpdateDocumentStatusRequest(BaseModel):
     document_number: Optional[str] = None
 
 
+class GenerateJournalRequest(BaseModel):
+    """Универсальный запрос для журналов (изоляция, геодезия)."""
+    project_id: str
+    entries: Optional[List[Dict]] = None
+
+
+class GenerateKS3Request(BaseModel):
+    project_id: str
+    period: Optional[str] = None
+    contract_number: Optional[str] = None
+    items: Optional[List[Dict]] = None
+    total_period: Optional[float] = None
+
+
+class GenerateTightnessTestRequest(BaseModel):
+    project_id: str
+    section_chainage: str
+    length_m: Optional[float] = None
+    test_medium: Optional[str] = "природный газ"
+    test_pressure_mpa: Optional[float] = None
+    pressure_start: Optional[float] = None
+    pressure_end: Optional[float] = None
+    duration_hours: Optional[int] = 24
+    result: Optional[str] = "УДОВЛЕТВОРИТЕЛЬНО"
+    test_date: Optional[str] = None
+    foreman: Optional[str] = None
+
+
 class GeneratePPRRequest(BaseModel):
     project_id: str
     installation_method: Optional[str] = "открытая траншея"
@@ -310,6 +338,90 @@ async def generate_tech_card(request: GenerateTechCardRequest, db: AsyncSession 
         auto_generated=True,
         content_json={"phase": phase.value, "card_number": request.card_number},
         normative_refs=["СНиП РК 3.01.01-2008*"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/isolation-journal", response_model=DocumentResponse)
+async def generate_isolation_journal(request: GenerateJournalRequest, db: AsyncSession = Depends(get_db)):
+    """Журнал производства изоляционных работ."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    file_path = document_generator.generate_isolation_journal(project_dict, request.entries or [])
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.ISOLATION_JOURNAL,
+        title=f"Журнал изоляционных работ — {project.name}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        normative_refs=["ГОСТ 9.602-2016", "ВСН 012-88 ч.II"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/geodesy-journal", response_model=DocumentResponse)
+async def generate_geodesy_journal(request: GenerateJournalRequest, db: AsyncSession = Depends(get_db)):
+    """Геодезический журнал."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    file_path = document_generator.generate_geodesy_journal(project_dict, request.entries or [])
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.GEODESY_JOURNAL,
+        title=f"Геодезический журнал — {project.name}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        normative_refs=["СНиП РК 3.01.01-2008*", "СП РК 1.04.02-2019"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/ks3", response_model=DocumentResponse)
+async def generate_ks3(request: GenerateKS3Request, db: AsyncSession = Depends(get_db)):
+    """КС-3 Справка о стоимости выполненных работ."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    ks3_dict = request.model_dump(exclude={"project_id"})
+    file_path = document_generator.generate_ks3(project_dict, ks3_dict)
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.KS3,
+        title=f"КС-3 Справка о стоимости — {project.name}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        content_json=ks3_dict,
+        normative_refs=["Приказ МФ РК"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/tightness-test", response_model=DocumentResponse)
+async def generate_tightness_test(request: GenerateTightnessTestRequest, db: AsyncSession = Depends(get_db)):
+    """Акт испытания на герметичность."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    test_dict = request.model_dump(exclude={"project_id"})
+    file_path = document_generator.generate_tightness_test_act(project_dict, test_dict)
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.TIGHTNESS_TEST,
+        title=f"Акт испытания на герметичность — ПК {request.section_chainage}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        content_json=test_dict,
+        normative_refs=["ГОСТ 24054-80", "СП РК 2.04-103-2013* п.10"],
         status=DocumentStatus.DRAFT,
     )
     db.add(doc)

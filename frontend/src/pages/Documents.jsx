@@ -543,13 +543,33 @@ export default function Documents() {
     onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
   })
 
+  const isolJournalMut = useMutation({
+    mutationFn: () => documentsApi.generateIsolationJournal({ project_id: projectId }),
+    onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
+  })
+
+  const geoJournalMut = useMutation({
+    mutationFn: () => documentsApi.generateGeodesyJournal({ project_id: projectId }),
+    onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
+  })
+
   const purgeMut = useMutation({
     mutationFn: () => documentsApi.generatePurgeAct({ project_id: projectId, section_chainage: 'по проекту' }),
     onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
   })
 
+  const tightnessMut = useMutation({
+    mutationFn: () => documentsApi.generateTightnessTest({ project_id: projectId, section_chainage: 'по проекту' }),
+    onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
+  })
+
   const ks2Mut = useMutation({
     mutationFn: () => documentsApi.generateKs2({ project_id: projectId }),
+    onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
+  })
+
+  const ks3Mut = useMutation({
+    mutationFn: () => documentsApi.generateKs3({ project_id: projectId }),
     onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
   })
 
@@ -655,12 +675,19 @@ export default function Documents() {
               <span className="text-sm font-medium text-slate-700">Сформировать документ</span>
             </div>
             <div className="flex flex-wrap gap-2">
+              <span className="text-xs text-slate-400 self-center px-1">Журналы:</span>
               <GenButton label="ОЖР" loading={ojrMut.isPending} onClick={() => ojrMut.mutate()} title="Общий журнал работ" />
-              <GenButton label="Журнал сварки" loading={weldJournalMut.isPending} onClick={() => weldJournalMut.mutate()} title="Журнал производства сварочных работ" />
+              <GenButton label="Журнал сварки" loading={weldJournalMut.isPending} onClick={() => weldJournalMut.mutate()} title="Журнал сварочных работ" />
+              <GenButton label="Журнал изоляции" loading={isolJournalMut.isPending} onClick={() => isolJournalMut.mutate()} title="Журнал изоляционных работ" />
+              <GenButton label="Геодезия" loading={geoJournalMut.isPending} onClick={() => geoJournalMut.mutate()} title="Геодезический журнал" />
+              <div className="w-px bg-slate-200 self-stretch" />
+              <span className="text-xs text-slate-400 self-center px-1">Акты:</span>
               <GenButton label="АОСР" onClick={() => setModal('aosr')} title="Акт освидетельствования скрытых работ" />
               <GenButton label="Гидроиспытания" onClick={() => setModal('hydraulic')} title="Акт гидравлических испытаний" />
-              <GenButton label="Акт продувки" loading={purgeMut.isPending} onClick={() => purgeMut.mutate()} title="Акт продувки и осушки газопровода" />
-              <GenButton label="КС-2" loading={ks2Mut.isPending} onClick={() => ks2Mut.mutate()} title="Акт о приёмке выполненных работ (КС-2)" />
+              <GenButton label="Герметичность" loading={tightnessMut.isPending} onClick={() => tightnessMut.mutate()} title="Акт испытания на герметичность" />
+              <GenButton label="Акт продувки" loading={purgeMut.isPending} onClick={() => purgeMut.mutate()} title="Акт продувки и осушки" />
+              <GenButton label="КС-2" loading={ks2Mut.isPending} onClick={() => ks2Mut.mutate()} title="Акт о приёмке выполненных работ" />
+              <GenButton label="КС-3" loading={ks3Mut.isPending} onClick={() => ks3Mut.mutate()} title="Справка о стоимости выполненных работ" />
               <GenButton label="КС-11" loading={ks11Mut.isPending} onClick={() => ks11Mut.mutate()} title="Акт приёмки построенного объекта" />
               <div className="w-px bg-slate-200 self-stretch mx-1" />
               <GenButton
