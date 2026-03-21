@@ -36,6 +36,7 @@ export const documentsApi = {
   generateKs11: (projectId) => api.post(`/documents/generate/ks11?project_id=${projectId}`),
   generatePpr: (data) => api.post('/documents/generate/ppr', data),
   generateTechCard: (data) => api.post('/documents/generate/tech-card', data),
+  generateTechCardsBundle: (data) => api.post('/documents/generate/tech-cards-bundle', data, { responseType: 'blob' }),
   phases: () => api.get('/documents/phases'),
   download: (docId) => `/api/documents/${docId}/download`,
   checkWithAi: (docId) => api.post(`/documents/${docId}/check-with-ai`),

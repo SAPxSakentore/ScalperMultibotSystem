@@ -271,7 +271,7 @@ async def generate_tech_card(request: GenerateTechCardRequest, db: AsyncSession 
     from app.models.shift_report import PHASE_NAMES_RU
     doc = Document(
         project_id=project.id,
-        document_type=DocumentType.PPR,          # тезкарта хранится в категории ПД/ППР
+        document_type=DocumentType.TECH_CARD,
         title=f"ТК-{request.card_number:02d} — {PHASE_NAMES_RU[phase]}",
         file_path=file_path,
         file_format="docx",
@@ -288,12 +288,75 @@ async def generate_tech_card(request: GenerateTechCardRequest, db: AsyncSession 
 
 @router.get("/phases")
 async def list_phases():
-    """Список фаз строительства (для выбора в тезкарте)."""
+    """Список фаз строительства (для выбора в техкарте)."""
     from app.models.shift_report import ConstructionPhase, PHASE_NAMES_RU
     return [
         {"value": phase.value, "label": PHASE_NAMES_RU[phase]}
         for phase in ConstructionPhase
     ]
+
+
+class GenerateAllTechCardsRequest(BaseModel):
+    project_id: str
+    phases: Optional[List[str]] = None   # None = все 20 фаз
+
+
+@router.post("/generate/tech-cards-bundle")
+async def generate_tech_cards_bundle(
+    request: GenerateAllTechCardsRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Сформировать пакет технологических карт (все/выбранные фазы) и вернуть ZIP-архив.
+    """
+    import zipfile, io
+    from app.models.shift_report import ConstructionPhase, PHASE_NAMES_RU
+    from fastapi.responses import StreamingResponse
+
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+
+    if request.phases:
+        try:
+            phases = [ConstructionPhase(p) for p in request.phases]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    else:
+        phases = list(ConstructionPhase)
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, phase in enumerate(phases, 1):
+            file_path = document_generator.generate_tech_card(
+                project_dict,
+                phase_value=phase.value,
+                card_number=i,
+            )
+            arc_name = f"ТК-{i:02d}_{phase.value}.docx"
+            with open(file_path, "rb") as f:
+                zf.writestr(arc_name, f.read())
+            # Сохраняем запись в БД
+            doc = Document(
+                project_id=project.id,
+                document_type=DocumentType.TECH_CARD,
+                title=f"ТК-{i:02d} — {PHASE_NAMES_RU[phase]}",
+                file_path=file_path,
+                file_format="docx",
+                auto_generated=True,
+                content_json={"phase": phase.value, "card_number": i},
+                normative_refs=["СНиП РК 3.01.01-2008*"],
+                status=DocumentStatus.DRAFT,
+            )
+            db.add(doc)
+
+    await db.flush()
+    zip_buffer.seek(0)
+    filename = f"TechCards_{project_dict.get('code', 'PROJ')}.zip"
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{doc_id}/download")

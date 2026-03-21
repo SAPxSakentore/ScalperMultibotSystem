@@ -396,7 +396,7 @@ class DocumentGenerator:
         return self._save_document(doc, "KS11", project_data.get("code", "PROJ"))
 
 
-    # ─── ППР и тезкарты ────────────────────────────────────────────────────────
+    # ─── ППР и техкарты ────────────────────────────────────────────────────────
 
     def generate_ppr(self, project_data: Dict, ppr_options: Dict = None) -> str:
         """
@@ -566,7 +566,7 @@ class DocumentGenerator:
         for item in oos_items:
             doc.add_paragraph(item, style="List Bullet")
 
-        # ── Перечень тезкарт ─────────────────────────────────────────────────
+        # ── Перечень техкарт ─────────────────────────────────────────────────
         doc.add_heading("6. ПЕРЕЧЕНЬ ТЕХНОЛОГИЧЕСКИХ КАРТ (ПРИЛОЖЕНИЯ)", level=1)
         tc_table = doc.add_table(rows=1, cols=2)
         tc_table.style = "Table Grid"
@@ -774,7 +774,7 @@ def _month_ru(month: int) -> str:
 # ─── Справочные данные технологических карт (операции / персонал / QC / ОТ) ──
 
 def _lazy_phase_data():
-    """Вернуть словари с данными для тезкарт (импорт внутри, чтобы избежать циклов)."""
+    """Вернуть словари с данными для техкарт (импорт внутри, чтобы избежать циклов)."""
     from app.models.shift_report import ConstructionPhase as P
 
     ops: dict = {

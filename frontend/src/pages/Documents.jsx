@@ -36,9 +36,14 @@ const DOC_GROUPS = [
     types: ['executive_scheme', 'building_passport'],
   },
   {
-    label: 'Проектная документация',
+    label: 'Проектная документация (ПД/РД)',
     icon: FileSearch,
     types: ['pos', 'por', 'ppr'],
+  },
+  {
+    label: 'Технологические карты',
+    icon: FileText,
+    types: ['tech_card'],
   },
   {
     label: 'Сертификаты и паспорта',
@@ -77,6 +82,7 @@ const TYPE_LABELS = {
   pos: 'ПОС',
   por: 'ПОР',
   ppr: 'ППР',
+  tech_card: 'Технологическая карта',
   material_cert: 'Сертификат на материал',
   equipment_passport: 'Паспорт оборудования',
   welder_cert: 'Удостоверение сварщика',
@@ -267,7 +273,7 @@ function ModalTechCard({ projectId, onClose, onSuccess }) {
   })
 
   return (
-    <ModalShell title="Технологическая карта (тезкарта)" onClose={onClose}>
+    <ModalShell title="Технологическая карта (техкарта)" onClose={onClose}>
       <div className="space-y-3 text-sm">
         <label className="flex flex-col gap-1">
           <span className="text-slate-500">Вид работ / фаза строительства *</span>
@@ -315,7 +321,7 @@ function ModalTechCard({ projectId, onClose, onSuccess }) {
           className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
         >
           {mutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          Сформировать тезкарту
+          Сформировать техкарту
         </button>
       </div>
     </ModalShell>
@@ -485,6 +491,20 @@ export default function Documents() {
     onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
   })
 
+  // Пакет всех технологических карт (ZIP)
+  const bundleMut = useMutation({
+    mutationFn: () => documentsApi.generateTechCardsBundle({ project_id: projectId }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(['documents', projectId])
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `TechCards_${projectId}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+    },
+  })
+
   // Генерация КС-11
   const ks11Mut = useMutation({
     mutationFn: () => documentsApi.generateKs11(projectId),
@@ -596,9 +616,15 @@ export default function Documents() {
                 title="Проект производства работ (все 20 фаз)"
               />
               <GenButton
-                label="Тезкарта"
+                label="Техкарта"
                 onClick={() => setModal('techcard')}
                 title="Технологическая карта на отдельный вид работ"
+              />
+              <GenButton
+                label="Весь пакет ТК"
+                loading={bundleMut.isPending}
+                onClick={() => bundleMut.mutate()}
+                title="Сформировать все 20 технологических карт (ZIP)"
               />
               <button
                 onClick={() => refetch()}

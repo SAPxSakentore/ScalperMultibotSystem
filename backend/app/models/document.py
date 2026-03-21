@@ -38,6 +38,7 @@ class DocumentType(str, enum.Enum):
     POS = "pos"    # Проект организации строительства
     POR = "por"    # Проект организации работ
     PPR = "ppr"    # Проект производства работ
+    TECH_CARD = "tech_card"  # Технологическая карта
 
     # Сертификаты и паспорта
     MATERIAL_CERT = "material_cert"   # Сертификат на материалы
