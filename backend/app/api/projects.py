@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.models.project import Project, ProjectType, ProjectStatus
+from app.models.shift_report import ShiftReport, ConstructionPhase, PHASE_NAMES_RU
 from app.agents import get_agent
 from app.services.normative_base import ITD_CHECKLISTS
 
@@ -152,6 +153,69 @@ async def generate_project_plan(project_id: str, db: AsyncSession = Depends(get_
     }
     plan = await agent.create_project_plan(project_dict)
     return {"project_id": project_id, "plan": plan, "generated_by": agent.name_ru}
+
+
+@router.get("/{project_id}/progress")
+async def get_project_progress(project_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Прогресс строительства по фазам.
+    Агрегирует сменные рапорты: сумма метров, кол-во смен, последняя дата.
+    Возвращает фазы в порядке технологической последовательности.
+    """
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+
+    # Агрегация по фазам
+    result = await db.execute(
+        select(
+            ShiftReport.construction_phase,
+            func.sum(ShiftReport.length_done_m).label("length_done_m"),
+            func.count(ShiftReport.id).label("shifts_count"),
+            func.max(ShiftReport.shift_date).label("last_date"),
+            func.sum(
+                func.cast(ShiftReport.is_finalized, float)
+            ).label("finalized_count"),
+        )
+        .where(ShiftReport.project_id == project_id)
+        .group_by(ShiftReport.construction_phase)
+    )
+    rows = result.all()
+
+    # Итого по проекту (в метрах)
+    total_m = (project.total_length_km or 0) * 1000
+    overall_done_m = sum(r.length_done_m or 0 for r in rows)
+
+    # Собираем по порядку фаз из enum
+    phase_index = {phase: i for i, phase in enumerate(ConstructionPhase)}
+    row_map = {r.construction_phase: r for r in rows}
+
+    phases_out = []
+    for phase in ConstructionPhase:
+        r = row_map.get(phase)
+        done_m = float(r.length_done_m or 0) if r else 0.0
+        pct = round(done_m / total_m * 100, 1) if total_m > 0 else None
+        phases_out.append({
+            "phase": phase.value,
+            "name_ru": PHASE_NAMES_RU[phase],
+            "length_done_m": done_m,
+            "length_done_km": round(done_m / 1000, 3),
+            "shifts_count": int(r.shifts_count) if r else 0,
+            "finalized_count": int(r.finalized_count or 0) if r else 0,
+            "last_date": r.last_date.isoformat() if r and r.last_date else None,
+            "pct_of_total": pct,
+            "has_data": r is not None,
+        })
+
+    return {
+        "project_id": project_id,
+        "total_length_km": project.total_length_km,
+        "total_length_m": total_m,
+        "overall_done_m": round(overall_done_m, 1),
+        "overall_done_km": round(overall_done_m / 1000, 3),
+        "overall_pct": round(overall_done_m / total_m * 100, 1) if total_m > 0 else None,
+        "phases": phases_out,
+    }
 
 
 @router.post("/{project_id}/analyze-risks")

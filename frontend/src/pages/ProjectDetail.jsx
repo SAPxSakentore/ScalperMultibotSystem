@@ -7,8 +7,9 @@ import {
   ClipboardList, Upload, Trash2, BookOpen, ChevronDown, ChevronUp,
   FileCheck, X, CheckCircle2,
 } from 'lucide-react'
+import TraceProgress from '../components/TraceProgress'
 
-const TAB_LABELS = ['Обзор', 'ИТД', 'Анализ', 'Документы', 'ПД/ППР']
+const TAB_LABELS = ['Обзор', 'ИТД', 'Прогресс', 'Документы', 'ПД/ППР']
 
 const DOC_CATEGORIES = ['ПОС', 'ППР', 'ПД', 'НТД', 'Экспертиза', 'прочее']
 
@@ -194,10 +195,10 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* Tab 2: Analysis */}
+      {/* Tab 2: Progress */}
       {tab === 2 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 text-sm text-slate-500">
-          Расширенный анализ проекта — в разработке
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <TraceProgress projectId={id} />
         </div>
       )}
 

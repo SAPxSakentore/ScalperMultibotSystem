@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Loader2, AlertCircle, Download,
 } from 'lucide-react'
 import { shiftReportsApi, projectsApi } from '../utils/api'
+import TraceProgress from '../components/TraceProgress'
 
 const SHIFT_LABELS = { day: 'Дневная', night: 'Ночная' }
 
@@ -74,6 +75,11 @@ export default function ShiftReports() {
         >
           <Plus size={16} /> Новый рапорт
         </button>
+      </div>
+
+      {/* Прогресс по трассе (компактный) */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <TraceProgress projectId={projectId} compact />
       </div>
 
       {/* Форма создания рапорта */}

@@ -25,6 +25,7 @@ export const projectsApi = {
   getItdChecklist: (id) => api.get(`/projects/${id}/itd-checklist`),
   generatePlan: (id) => api.post(`/projects/${id}/generate-plan`),
   analyzeRisks: (id) => api.post(`/projects/${id}/analyze-risks`),
+  getProgress: (id) => api.get(`/projects/${id}/progress`),
 }
 
 export const documentsApi = {
