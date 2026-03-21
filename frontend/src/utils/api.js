@@ -73,6 +73,20 @@ export const workSectionsApi = {
   delete: (id) => api.delete(`/work-sections/${id}`),
 }
 
+export const smetaApi = {
+  list: (projectId) => api.get(`/smeta/project/${projectId}`),
+  create: (data) => api.post('/smeta/', data),
+  update: (id, data) => api.put(`/smeta/${id}`, data),
+  delete: (id) => api.delete(`/smeta/${id}`),
+  importBulk: (projectId, items) => api.post(`/smeta/project/${projectId}/import-bulk`, items),
+  // Агрегация объёмов за период — возвращает массив WorkVolumeRow
+  workVolumes: (projectId, dateFrom, dateTo) =>
+    api.get(`/smeta/project/${projectId}/work-volumes`, { params: { date_from: dateFrom, date_to: dateTo } }),
+  // Генерация КС-2 + КС-3 → ZIP
+  generateActs: (projectId, body) =>
+    api.post(`/smeta/project/${projectId}/generate-acts`, body, { responseType: 'blob' }),
+}
+
 export const shiftReportsApi = {
   phases: () => api.get('/shift-reports/phases'),
   list: (projectId, params) => api.get(`/shift-reports/projects/${projectId}/`, { params }),

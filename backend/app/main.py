@@ -11,6 +11,7 @@ from app.api.documents import router as documents_router
 from app.api.agents import router as agents_router
 from app.api.shift_reports import router as shift_reports_router
 from app.api.work_sections import router as work_sections_router
+from app.api.smeta import router as smeta_router
 
 
 @asynccontextmanager
@@ -54,6 +55,7 @@ app.include_router(documents_router)
 app.include_router(agents_router)
 app.include_router(shift_reports_router)
 app.include_router(work_sections_router)
+app.include_router(smeta_router)
 
 
 @app.get("/api/health")

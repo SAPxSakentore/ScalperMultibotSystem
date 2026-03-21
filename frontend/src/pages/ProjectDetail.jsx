@@ -9,6 +9,7 @@ import {
   Plus, MapPin, Calendar, User, Check, Pencil,
 } from 'lucide-react'
 import TraceProgress from '../components/TraceProgress'
+import SmetaTab from '../components/SmetaTab'
 
 function ProgressBadge({ projectId }) {
   const { data } = useQuery({
@@ -47,7 +48,7 @@ function ProgressBadge({ projectId }) {
   )
 }
 
-const TAB_LABELS = ['Обзор', 'ИТД', 'Прогресс', 'Разделы работ', 'Документы', 'ПД/ППР']
+const TAB_LABELS = ['Обзор', 'ИТД', 'Прогресс', 'Разделы работ', 'Смета / КС', 'Документы', 'ПД/ППР']
 
 const DOC_CATEGORIES = ['ПОС', 'ППР', 'ПД', 'НТД', 'Экспертиза', 'прочее']
 
@@ -290,8 +291,11 @@ export default function ProjectDetail() {
       {/* Tab 3: Work Sections */}
       {tab === 3 && <WorkSectionsTab projectId={id} />}
 
-      {/* Tab 4: Documents */}
-      {tab === 4 && (
+      {/* Tab 4: Smeta / KS */}
+      {tab === 4 && <SmetaTab projectId={id} />}
+
+      {/* Tab 5: Documents */}
+      {tab === 5 && (
         <div className="space-y-4">
           <div className="flex gap-3 flex-wrap">
             <button
@@ -357,8 +361,8 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* Tab 5: PDF Upload */}
-      {tab === 5 && <PdfUploadTab projectId={id} />}
+      {/* Tab 6: PDF Upload */}
+      {tab === 6 && <PdfUploadTab projectId={id} />}
     </div>
   )
 }

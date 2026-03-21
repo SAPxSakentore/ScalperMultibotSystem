@@ -1012,6 +1012,268 @@ class DocumentGenerator:
 
         return self._save_document(doc, "KS2", project_data.get("code", "PROJ"))
 
+    def generate_ks2_full(self, project_data: Dict, ks2_data: Dict) -> str:
+        """
+        КС-2 «Акт о приёмке выполненных работ» с накопительными итогами.
+        Столбцы: №пп | Код НТД | Наименование | Ед | Объём по смете |
+                  Выполнено за период | Нарастающим итогом | Цена | Сумма за период | Сумма нарастающим
+        Форма строго соответствует Приказу МФ РК о первичных учётных документах.
+        """
+        doc = Document()
+        section = doc.sections[0]
+        section.page_width  = Cm(42.0)   # A3 альбомная
+        section.page_height = Cm(29.7)
+        section.left_margin = Cm(2.0)
+        section.right_margin = Cm(1.0)
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+
+        # ── Шапка ────────────────────────────────────────────────────────────
+        title = doc.add_heading("АКТ О ПРИЁМКЕ ВЫПОЛНЕННЫХ РАБОТ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        sub = doc.add_paragraph("(Форма КС-2)")
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"г. {project_data.get('region', '')}    «___» _________ {datetime.now().year} г."
+        )
+        doc.add_paragraph()
+
+        # Реквизиты
+        req = doc.add_table(rows=7, cols=2)
+        req.style = "Table Grid"
+        _set_table_borders(req)
+        for i, (lbl, val) in enumerate([
+            ("Заказчик:", project_data.get("customer_name", "")),
+            ("Подрядчик:", project_data.get("contractor_name", "")),
+            ("Объект:", project_data.get("name", "")),
+            ("Шифр проекта:", project_data.get("code", "")),
+            ("Номер акта:", ks2_data.get("act_number", "___")),
+            ("Отчётный период:", ks2_data.get("period", "___")),
+            ("Номер договора подряда:", ks2_data.get("contract_number", "___")),
+        ]):
+            r = req.rows[i]
+            r.cells[0].text = lbl
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_heading("Перечень выполненных работ:", level=2)
+
+        # ── Таблица работ ────────────────────────────────────────────────────
+        COLS = ["№\nпп", "Код\nНТД", "Наименование\nработ и затрат", "Ед.\nизм.",
+                "Объём\nпо смете", "Выполнено\nза период", "Нарастающим\nитогом",
+                "Цена за ед.,\nтг.", "Сумма\nза период, тг.", "Сумма\nнараст., тг."]
+        tbl = doc.add_table(rows=1, cols=len(COLS))
+        tbl.style = "Table Grid"
+        _set_table_borders(tbl)
+        for j, h in enumerate(COLS):
+            cell = tbl.rows[0].cells[j]
+            cell.text = h
+            cell.paragraphs[0].runs[0].bold = True
+            cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        works = ks2_data.get("works", [])
+        total_period = 0.0
+        total_cumul  = 0.0
+        current_section = None
+
+        for idx, w in enumerate(works, 1):
+            # Заголовок раздела
+            sec = w.get("section", "")
+            if sec and sec != current_section:
+                current_section = sec
+                sec_row = tbl.add_row()
+                sec_cell = sec_row.cells[0]
+                sec_cell.merge(sec_row.cells[len(COLS) - 1])
+                sec_cell.text = sec
+                sec_cell.paragraphs[0].runs[0].bold = True
+                sec_cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            qty     = float(w.get("quantity", 0) or 0)
+            c_qty   = float(w.get("cumulative_qty", 0) or 0)
+            price   = float(w.get("unit_price", 0) or 0)
+            amount  = float(w.get("amount", qty * price))
+            c_amount = float(w.get("cumulative_amount", c_qty * price))
+            total_period += amount
+            total_cumul  += c_amount
+
+            row = tbl.add_row()
+            row.cells[0].text = str(w.get("position_no", idx))
+            row.cells[1].text = w.get("normative_code", "")
+            row.cells[2].text = w.get("name", "")
+            row.cells[3].text = w.get("unit", "")
+            row.cells[4].text = f"{w.get('planned_qty', 0):g}"
+            row.cells[5].text = f"{qty:g}"
+            row.cells[6].text = f"{c_qty:g}"
+            row.cells[7].text = f"{price:,.2f}"
+            row.cells[8].text = f"{amount:,.2f}"
+            row.cells[9].text = f"{c_amount:,.2f}"
+            # Маршрут/ПК в примечание (ячейка наименования)
+            chainages = w.get("chainages", "")
+            if chainages:
+                row.cells[2].paragraphs[0].add_run(f"\n  ({chainages})").font.size = Pt(7)
+
+        # Итого
+        total_row = tbl.add_row()
+        total_row.cells[1].merge(total_row.cells[7])
+        total_row.cells[1].text = "ИТОГО:"
+        total_row.cells[1].paragraphs[0].runs[0].bold = True
+        total_row.cells[8].text = f"{total_period:,.2f}"
+        total_row.cells[8].paragraphs[0].runs[0].bold = True
+        total_row.cells[9].text = f"{total_cumul:,.2f}"
+        total_row.cells[9].paragraphs[0].runs[0].bold = True
+
+        doc.add_paragraph()
+        nds = total_period * 0.12
+        total_with_nds = total_period + nds
+        doc.add_paragraph(
+            f"Итого по акту за отчётный период: {total_period:,.2f} тг.\n"
+            f"НДС 12%: {nds:,.2f} тг.\n"
+            f"Итого с НДС: {total_with_nds:,.2f} тг."
+        ).runs[0].bold = True
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            "Работы выполнены в соответствии с проектной документацией, "
+            "нормативными требованиями РК и условиями договора подряда."
+        )
+
+        doc.add_paragraph()
+        sig = doc.add_table(rows=2, cols=4)
+        sig.style = "Table Grid"
+        _set_table_borders(sig)
+        for i, (role, name_key) in enumerate([
+            ("Сдал (Подрядчик):", "contractor_name"),
+            ("Принял (Заказчик / тех. надзор):", "customer_name"),
+        ]):
+            sig.rows[i].cells[0].text = role
+            sig.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+            sig.rows[i].cells[1].text = project_data.get(name_key, "")
+            sig.rows[i].cells[2].text = "____________"
+            sig.rows[i].cells[3].text = "М.П."
+
+        return self._save_document(doc, "KS2_Full", project_data.get("code", "PROJ"))
+
+    def generate_ks3_from_ks2(self, project_data: Dict, ks3_data: Dict) -> str:
+        """
+        КС-3 «Справка о стоимости выполненных работ и затрат» — формируется на основе
+        итогов КС-2. Содержит: нарастающий итог, итог за период, НДС 12%.
+        """
+        doc = Document()
+
+        title = doc.add_heading("СПРАВКА О СТОИМОСТИ ВЫПОЛНЕННЫХ РАБОТ И ЗАТРАТ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sub = doc.add_paragraph("(Форма КС-3)")
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"г. {project_data.get('region', '')}    «___» _________ {datetime.now().year} г."
+        )
+        doc.add_paragraph()
+
+        # Реквизиты
+        req = doc.add_table(rows=5, cols=2)
+        req.style = "Table Grid"
+        _set_table_borders(req)
+        for i, (lbl, val) in enumerate([
+            ("Заказчик:", project_data.get("customer_name", "")),
+            ("Подрядчик:", project_data.get("contractor_name", "")),
+            ("Объект:", project_data.get("name", "")),
+            ("Отчётный период:", ks3_data.get("period", "___")),
+            ("Номер договора подряда:", ks3_data.get("contract_number", "___")),
+        ]):
+            r = req.rows[i]
+            r.cells[0].text = lbl
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_heading("Стоимость выполненных работ:", level=2)
+
+        # Таблица КС-3
+        tbl = doc.add_table(rows=1, cols=5)
+        tbl.style = "Table Grid"
+        _set_table_borders(tbl)
+        for j, h in enumerate([
+            "№", "Наименование затрат",
+            "Сметная стоимость, тг.",
+            "Выполнено с начала строительства, тг.",
+            "В том числе за отчётный период, тг.",
+        ]):
+            cell = tbl.rows[0].cells[j]
+            cell.text = h
+            cell.paragraphs[0].runs[0].bold = True
+            cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        total_period  = float(ks3_data.get("total_period", 0) or 0)
+        total_cumul   = float(ks3_data.get("total_cumulative", 0) or 0)
+        total_planned = float(ks3_data.get("total_planned", 0) or 0)
+
+        # Строки
+        rows_data = [
+            ("1", "Строительные и монтажные работы", total_planned, total_cumul, total_period),
+        ]
+        for pos, name, planned, cumul, period in rows_data:
+            row = tbl.add_row()
+            row.cells[0].text = str(pos)
+            row.cells[1].text = name
+            row.cells[2].text = f"{planned:,.2f}"
+            row.cells[3].text = f"{cumul:,.2f}"
+            row.cells[4].text = f"{period:,.2f}"
+
+        # Итого
+        total_row = tbl.add_row()
+        for j, val in enumerate(["", "ИТОГО:", f"{total_planned:,.2f}", f"{total_cumul:,.2f}", f"{total_period:,.2f}"]):
+            total_row.cells[j].text = val
+            if val.startswith("ИТОГО"):
+                total_row.cells[j].paragraphs[0].runs[0].bold = True
+
+        nds = total_period * 0.12
+        nds_cumul = total_cumul * 0.12
+
+        # НДС строка
+        nds_row = tbl.add_row()
+        nds_row.cells[1].text = "НДС (12%):"
+        nds_row.cells[2].text = ""
+        nds_row.cells[3].text = f"{nds_cumul:,.2f}"
+        nds_row.cells[4].text = f"{nds:,.2f}"
+
+        # Итого с НДС
+        grand_row = tbl.add_row()
+        grand_row.cells[1].text = "ИТОГО с НДС:"
+        grand_row.cells[1].paragraphs[0].runs[0].bold = True
+        grand_row.cells[3].text = f"{total_cumul + nds_cumul:,.2f}"
+        grand_row.cells[3].paragraphs[0].runs[0].bold = True
+        grand_row.cells[4].text = f"{total_period + nds:,.2f}"
+        grand_row.cells[4].paragraphs[0].runs[0].bold = True
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"Справка составлена на основании Акта КС-2 № {ks3_data.get('act_ref', '___')}."
+        )
+        doc.add_paragraph(
+            f"Итого к оплате за отчётный период (с НДС): {total_period + nds:,.2f} тенге."
+        ).runs[0].bold = True
+
+        doc.add_paragraph()
+        sig = doc.add_table(rows=2, cols=3)
+        sig.style = "Table Grid"
+        _set_table_borders(sig)
+        for i, (role, name_key) in enumerate([
+            ("Сдал (Подрядчик):", "contractor_name"),
+            ("Принял (Заказчик):", "customer_name"),
+        ]):
+            sig.rows[i].cells[0].text = role
+            sig.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+            sig.rows[i].cells[1].text = project_data.get(name_key, "")
+            sig.rows[i].cells[2].text = "____________ М.П."
+
+        return self._save_document(doc, "KS3_Full", project_data.get("code", "PROJ"))
+
     def generate_purge_act(self, project_data: Dict, purge_data: Dict) -> str:
         """
         Акт продувки и осушки газопровода.

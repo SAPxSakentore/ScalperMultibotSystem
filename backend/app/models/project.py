@@ -83,3 +83,4 @@ class Project(Base):
     work_sections = relationship("WorkSection", back_populates="project", cascade="all, delete-orphan")
     shift_reports = relationship("ShiftReport", back_populates="project", cascade="all, delete-orphan")
     pdf_uploads = relationship("ProjectPdfUpload", back_populates="project", cascade="all, delete-orphan")
+    smeta_items = relationship("SmetaItem", back_populates="project", cascade="all, delete-orphan", order_by="SmetaItem.position_no")
