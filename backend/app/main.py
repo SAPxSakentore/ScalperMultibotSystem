@@ -64,6 +64,31 @@ async def health_check():
     }
 
 
+@app.get("/api/stats")
+async def get_stats():
+    """Статистика системы для дашборда."""
+    from app.core.database import AsyncSessionLocal
+    from sqlalchemy import select, func
+    from app.models.project import Project
+    from app.models.document import Document
+    from app.models.shift_report import ShiftReport
+
+    async with AsyncSessionLocal() as session:
+        projects_count = (await session.execute(select(func.count()).select_from(Project))).scalar()
+        docs_count = (await session.execute(select(func.count()).select_from(Document))).scalar()
+        reports_count = (await session.execute(select(func.count()).select_from(ShiftReport))).scalar()
+        finalized_count = (await session.execute(
+            select(func.count()).select_from(ShiftReport).where(ShiftReport.is_finalized == True)
+        )).scalar()
+
+    return {
+        "projects": projects_count,
+        "documents": docs_count,
+        "shift_reports": reports_count,
+        "finalized_reports": finalized_count,
+    }
+
+
 @app.get("/api/normatives")
 async def get_normatives():
     """Получить список нормативных документов РК."""

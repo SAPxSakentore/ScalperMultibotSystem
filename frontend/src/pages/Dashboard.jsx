@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { projectsApi, agentsApi } from '../utils/api'
-import { FolderOpen, FileText, Users, CheckCircle, Clock, AlertTriangle, Building2 } from 'lucide-react'
+import api from '../utils/api'
+import { FolderOpen, FileText, Users, CheckCircle, ClipboardList, Building2 } from 'lucide-react'
 
 const STATUS_LABELS = {
   initiation: 'Инициация',
@@ -53,6 +54,12 @@ export default function Dashboard() {
     queryFn: () => agentsApi.list().then(r => r.data),
   })
 
+  const { data: stats = {} } = useQuery({
+    queryKey: ['stats'],
+    queryFn: () => api.get('/stats').then(r => r.data),
+    refetchInterval: 30000,
+  })
+
   const activeProjects = projects.filter(p =>
     !['completed', 'suspended'].includes(p.status)
   ).length
@@ -82,15 +89,15 @@ export default function Dashboard() {
           color="bg-emerald-50 text-emerald-600"
         />
         <StatCard
-          icon={Users}
-          label="Агентов-сотрудников"
-          value={agents.length}
-          color="bg-purple-50 text-purple-600"
+          icon={ClipboardList}
+          label="Сменных рапортов"
+          value={stats.shift_reports ?? 0}
+          color="bg-amber-50 text-amber-600"
         />
         <StatCard
           icon={CheckCircle}
-          label="Завершено проектов"
-          value={projects.filter(p => p.status === 'completed').length}
+          label="Документов ИТД"
+          value={stats.documents ?? 0}
           color="bg-green-50 text-green-600"
         />
       </div>
