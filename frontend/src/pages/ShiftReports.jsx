@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ClipboardList, Plus, CheckCircle2, FileText,
   ChevronDown, ChevronUp, Loader2, AlertCircle, Download,
+  Trash2, X,
 } from 'lucide-react'
 import { shiftReportsApi, projectsApi } from '../utils/api'
 import TraceProgress from '../components/TraceProgress'
@@ -336,6 +337,67 @@ function ReportCard({ report, phases, expanded, onToggle, signerName, onSignerCh
 
 // ─── Форма создания рапорта ───────────────────────────────────────────────────
 
+// ─── Редактор строк works_done ────────────────────────────────────────────────
+function WorksDoneEditor({ value, onChange }) {
+  const addRow = () => onChange([...value, { work_type: '', unit: 'м', quantity: 0, chainage: '', note: '' }])
+  const removeRow = (i) => onChange(value.filter((_, idx) => idx !== i))
+  const setField = (i, k, v) => {
+    const next = [...value]
+    next[i] = { ...next[i], [k]: k === 'quantity' ? (parseFloat(v) || 0) : v }
+    onChange(next)
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Выполненные работы</span>
+        <button type="button" onClick={addRow}
+          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
+          <Plus size={11} /> Добавить строку
+        </button>
+      </div>
+      {value.length === 0 && (
+        <p className="text-xs text-slate-400 italic">Нет записей. Нажмите «+ Добавить строку»</p>
+      )}
+      {value.map((w, i) => (
+        <div key={i} className="flex gap-2 items-start">
+          <input
+            value={w.work_type}
+            onChange={e => setField(i, 'work_type', e.target.value)}
+            placeholder="Вид работы (должен совпадать с ключом сметы)"
+            className="input flex-1 text-sm"
+          />
+          <input
+            type="number"
+            value={w.quantity}
+            onChange={e => setField(i, 'quantity', e.target.value)}
+            className="input w-20 text-sm"
+            placeholder="Кол-во"
+            min="0" step="0.01"
+          />
+          <input
+            value={w.unit}
+            onChange={e => setField(i, 'unit', e.target.value)}
+            className="input w-16 text-sm"
+            placeholder="ед."
+          />
+          <input
+            value={w.chainage}
+            onChange={e => setField(i, 'chainage', e.target.value)}
+            className="input w-28 text-sm"
+            placeholder="ПК..."
+          />
+          <button type="button" onClick={() => removeRow(i)}
+            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded mt-0.5">
+            <X size={13} />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Форма создания рапорта ───────────────────────────────────────────────────
 function CreateReportForm({ projectId, phases, onSubmit, isLoading, onCancel }) {
   const today = new Date().toISOString().slice(0, 16)
   const [form, setForm] = useState({
@@ -350,13 +412,16 @@ function CreateReportForm({ projectId, phases, onSubmit, isLoading, onCancel }) 
     weather_morning: '',
     weather_afternoon: '',
     use_ai: true,
+    works_done: [],
   })
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    onSubmit({ ...form, shift_date: new Date(form.shift_date).toISOString() })
+    const payload = { ...form, shift_date: new Date(form.shift_date).toISOString() }
+    if (form.use_ai) delete payload.works_done  // AI заполнит сам
+    onSubmit(payload)
   }
 
   return (
@@ -397,10 +462,10 @@ function CreateReportForm({ projectId, phases, onSubmit, isLoading, onCancel }) 
           />
         </Field>
         <Field label="ПК начало">
-          <input type="text" value={form.chainage_start} onChange={e => set('chainage_start', e.target.value)} placeholder="напр. ПК 14+00" className="input" />
+          <input type="text" value={form.chainage_start} onChange={e => set('chainage_start', e.target.value)} placeholder="ПК 14+00" className="input" />
         </Field>
         <Field label="ПК конец">
-          <input type="text" value={form.chainage_end} onChange={e => set('chainage_end', e.target.value)} placeholder="напр. ПК 15+20" className="input" />
+          <input type="text" value={form.chainage_end} onChange={e => set('chainage_end', e.target.value)} placeholder="ПК 15+20" className="input" />
         </Field>
         <Field label="Выполнено, м">
           <input type="number" value={form.length_done_m} onChange={e => set('length_done_m', parseFloat(e.target.value) || 0)} className="input" min="0" />
@@ -413,15 +478,26 @@ function CreateReportForm({ projectId, phases, onSubmit, isLoading, onCancel }) 
         </Field>
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={form.use_ai}
-          onChange={e => set('use_ai', e.target.checked)}
-          className="rounded"
-        />
-        Заполнить остальные поля через AI (Claude)
-      </label>
+      <div className="border-t border-slate-100 pt-3">
+        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer mb-3">
+          <input
+            type="checkbox"
+            checked={form.use_ai}
+            onChange={e => set('use_ai', e.target.checked)}
+            className="rounded"
+          />
+          <span>
+            <span className="font-medium">Заполнить виды работ через AI</span>
+            <span className="text-slate-400 ml-1">(Claude сгенерирует works_done по фазе)</span>
+          </span>
+        </label>
+        {!form.use_ai && (
+          <WorksDoneEditor
+            value={form.works_done}
+            onChange={(v) => set('works_done', v)}
+          />
+        )}
+      </div>
 
       <div className="flex gap-3 pt-2">
         <button

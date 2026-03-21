@@ -11,6 +11,7 @@ import { smetaApi } from '../utils/api'
 import {
   Plus, Trash2, Pencil, Check, X, FileDown, Loader2,
   Calculator, BarChart2, Calendar, AlertCircle, ChevronDown, ChevronUp,
+  TrendingUp,
 } from 'lucide-react'
 
 // ── Форматирование ────────────────────────────────────────────────────────────
@@ -186,7 +187,7 @@ function ActsDialog({ projectId, smetaItems, onClose }) {
             </label>
             <div className="flex items-center gap-2">
               <span className="text-slate-500">Скачать:</span>
-              {[['zip', 'ZIP (КС-2 + КС-3)'], ['ks2', 'КС-2 (DOCX)'], ['ks3', 'КС-3 (DOCX)']].map(([v, l]) => (
+              {[['zip', 'ZIP + Excel'], ['ks2', 'КС-2 (DOCX)'], ['ks3', 'КС-3 (DOCX)'], ['xlsx', 'КС-2+3 Excel']].map(([v, l]) => (
                 <label key={v} className="flex items-center gap-1 cursor-pointer">
                   <input type="radio" name="output" value={v} checked={output === v} onChange={() => setOutput(v)} />
                   <span className={output === v ? 'text-blue-700 font-medium' : 'text-slate-600'}>{l}</span>
@@ -298,6 +299,78 @@ function ActsDialog({ projectId, smetaItems, onClose }) {
   )
 }
 
+// ── Мини-дашборд прогресса сметы ─────────────────────────────────────────────
+function SmetaProgress({ projectId, items }) {
+  const { data: volumes } = useQuery({
+    queryKey: ['smeta-progress', projectId],
+    queryFn: () => smetaApi.cumulativeProgress(projectId).then(r => r.data),
+    enabled: items.length > 0,
+  })
+
+  if (!volumes?.length || !items.length) return null
+
+  const totalPlanned  = items.reduce((s, i) => s + i.planned_amount, 0)
+  const totalActual   = volumes.filter(v => v.smeta_id).reduce((s, v) => s + v.cumulative_amount, 0)
+  const overallPct    = totalPlanned > 0 ? Math.min(Math.round(totalActual / totalPlanned * 100), 100) : 0
+  const outsideSmeta  = volumes.filter(v => !v.smeta_id && v.actual_qty > 0).length
+
+  // Разбивка по разделам
+  const sections = {}
+  items.forEach(i => {
+    const sec = i.section || 'Без раздела'
+    if (!sections[sec]) sections[sec] = { planned: 0, actual: 0 }
+    sections[sec].planned += i.planned_amount
+  })
+  volumes.filter(v => v.smeta_id).forEach(v => {
+    const item = items.find(i => i.id === v.smeta_id)
+    if (item) {
+      const sec = item.section || 'Без раздела'
+      if (sections[sec]) sections[sec].actual = (sections[sec].actual || 0) + v.cumulative_amount
+    }
+  })
+
+  const topSections = Object.entries(sections)
+    .map(([sec, d]) => ({ sec, pct: d.planned > 0 ? Math.round(d.actual / d.planned * 100) : 0, planned: d.planned, actual: d.actual }))
+    .sort((a, b) => b.planned - a.planned)
+    .slice(0, 5)
+
+  return (
+    <div className="bg-gradient-to-r from-blue-50 to-slate-50 rounded-xl border border-blue-100 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <TrendingUp size={15} className="text-blue-600" />
+          Прогресс выполнения сметы (с начала года)
+        </div>
+        <div className="text-2xl font-bold text-blue-700">{overallPct}%</div>
+      </div>
+      <div className="h-2.5 bg-white rounded-full overflow-hidden border border-blue-100">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${overallPct >= 90 ? 'bg-emerald-500' : overallPct >= 60 ? 'bg-blue-500' : overallPct >= 30 ? 'bg-amber-400' : 'bg-orange-400'}`}
+          style={{ width: `${overallPct}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <span>Выполнено: <span className="font-medium text-slate-700">{fmt(totalActual)} тг.</span></span>
+        <span>По смете: <span className="font-medium text-slate-700">{fmt(totalPlanned)} тг.</span></span>
+        {outsideSmeta > 0 && <span className="text-amber-600">⚠ {outsideSmeta} внесметных видов работ</span>}
+      </div>
+      {topSections.length > 1 && (
+        <div className="space-y-1.5 pt-1">
+          {topSections.map(({ sec, pct, actual, planned }) => (
+            <div key={sec} className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 w-32 truncate" title={sec}>{sec}</span>
+              <div className="flex-1 h-1.5 bg-white rounded-full overflow-hidden border border-slate-100">
+                <div className={`h-full rounded-full ${STATUS_COLOR(pct)}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+              </div>
+              <span className="text-xs text-slate-500 w-8 text-right">{pct}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Основной компонент ────────────────────────────────────────────────────────
 export default function SmetaTab({ projectId }) {
   const queryClient = useQueryClient()
@@ -357,6 +430,9 @@ export default function SmetaTab({ projectId }) {
           </button>
         </div>
       </div>
+
+      {/* Прогресс */}
+      <SmetaProgress projectId={projectId} items={items} />
 
       {/* Table */}
       {items.length === 0 && editItem !== 'new' ? (

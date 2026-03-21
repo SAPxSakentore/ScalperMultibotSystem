@@ -79,12 +79,18 @@ export const smetaApi = {
   update: (id, data) => api.put(`/smeta/${id}`, data),
   delete: (id) => api.delete(`/smeta/${id}`),
   importBulk: (projectId, items) => api.post(`/smeta/project/${projectId}/import-bulk`, items),
-  // Агрегация объёмов за период — возвращает массив WorkVolumeRow
   workVolumes: (projectId, dateFrom, dateTo) =>
     api.get(`/smeta/project/${projectId}/work-volumes`, { params: { date_from: dateFrom, date_to: dateTo } }),
-  // Генерация КС-2 + КС-3 → ZIP
   generateActs: (projectId, body) =>
     api.post(`/smeta/project/${projectId}/generate-acts`, body, { responseType: 'blob' }),
+  // Накопительный прогресс (с начала до сегодня)
+  cumulativeProgress: (projectId) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const year = today.slice(0, 4)
+    return api.get(`/smeta/project/${projectId}/work-volumes`, {
+      params: { date_from: `${year}-01-01`, date_to: today }
+    })
+  },
 }
 
 export const shiftReportsApi = {
