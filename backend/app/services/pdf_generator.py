@@ -14,7 +14,7 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 # ── Шрифты ──────────────────────────────────────────────────────────────────
@@ -586,10 +586,10 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
          ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F0F4FF")),
          ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F0F4FF"))],
     ))
-    story.append(_sp(8))
+    story.append(_sp(3))
 
     # ── 1. Выполненные работы ──────────────────────────────────────────────
-    story.append(_p("<b>1. ВЫПОЛНЕННЫЕ РАБОТЫ ЗА СМЕНУ</b>", st["bold"], after=4))
+    story.append(_p("<b>1. ВЫПОЛНЕННЫЕ РАБОТЫ ЗА СМЕНУ</b>", st["bold"], after=2))
     works = report.get("works_done") or []
     w_data = [[_p("<b>№</b>", st["small_ctr"]), _p("<b>Вид работ</b>", st["small_ctr"]),
                _p("<b>Ед.</b>", st["small_ctr"]), _p("<b>Кол-во</b>", st["small_ctr"]),
@@ -603,10 +603,10 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
     story.append(_tbl(w_data, [1 * cm, 5.5 * cm, 1.5 * cm, 1.5 * cm, 3.5 * cm, 4.5 * cm],
         [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
          ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))]))
-    story.append(_sp(8))
+    story.append(_sp(5))
 
     # ── 2. Персонал и техника ──────────────────────────────────────────────
-    story.append(_p("<b>2. ПЕРСОНАЛ И ТЕХНИКА</b>", st["bold"], after=4))
+    story.append(_p("<b>2. ПЕРСОНАЛ И ТЕХНИКА</b>", st["bold"], after=2))
     workers = report.get("workers_on_site") or {}
     p_data = [[_p("<b>Категория</b>", st["small"]), _p("<b>Чел.</b>", st["small_ctr"])]]
     for k in ["ИТР", "рабочие", "охрана", "итого"]:
@@ -626,10 +626,10 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
               [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))])
     story.append(_tbl([[pt, mt]], [5.5 * cm, 10.5 * cm]))
-    story.append(_sp(8))
+    story.append(_sp(5))
 
     # ── 3. Материалы ──────────────────────────────────────────────────────
-    story.append(_p("<b>3. ПОСТУПЛЕНИЕ МАТЕРИАЛОВ</b>", st["bold"], after=4))
+    story.append(_p("<b>3. ПОСТУПЛЕНИЕ МАТЕРИАЛОВ</b>", st["bold"], after=2))
     mats = report.get("materials_received") or []
     mat_data = [[_p("<b>Материал</b>", st["small"]), _p("<b>Кол.</b>", st["small_ctr"]),
                  _p("<b>Ед.</b>", st["small_ctr"]), _p("<b>№ серт.</b>", st["small"])]]
@@ -644,10 +644,10 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
     story.append(_tbl(mat_data, [7.5 * cm, 2 * cm, 1.5 * cm, 6.5 * cm],
         [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
          ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))]))
-    story.append(_sp(8))
+    story.append(_sp(5))
 
     # ── 4. Контроль качества ──────────────────────────────────────────────
-    story.append(_p("<b>4. КОНТРОЛЬ КАЧЕСТВА</b>", st["bold"], after=4))
+    story.append(_p("<b>4. КОНТРОЛЬ КАЧЕСТВА</b>", st["bold"], after=2))
     qcs = report.get("quality_checks") or []
     qc_data = [[_p("<b>Вид контроля</b>", st["small"]), _p("<b>Кол.</b>", st["small_ctr"]),
                 _p("<b>Результат</b>", st["small"]), _p("<b>Контролёр</b>", st["small"])]]
@@ -662,10 +662,10 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
     story.append(_tbl(qc_data, [6.5 * cm, 1.5 * cm, 5 * cm, 4.5 * cm],
         [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
          ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))]))
-    story.append(_sp(8))
+    story.append(_sp(5))
 
     # ── 5. Простои ────────────────────────────────────────────────────────
-    story.append(_p("<b>5. ПРОСТОИ И НАРУШЕНИЯ</b>", st["bold"], after=4))
+    story.append(_p("<b>5. ПРОСТОИ И НАРУШЕНИЯ</b>", st["bold"], after=2))
     story.append(_tbl(
         [[_p("<b>Простой, ч:</b>", st["small"]),
           _p(f"{report.get('downtime_hours') or 0:.1f}", st["small"]),
@@ -678,10 +678,10 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
         [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
          ("SPAN", (1, 1), (3, 1))],
     ))
-    story.append(_sp(8))
+    story.append(_sp(5))
 
     # ── 6. Выданные документы ─────────────────────────────────────────────
-    story.append(_p("<b>6. ВЫДАННЫЕ ДОКУМЕНТЫ ИТД</b>", st["bold"], after=4))
+    story.append(_p("<b>6. ВЫДАННЫЕ ДОКУМЕНТЫ ИТД</b>", st["bold"], after=2))
     docs = report.get("documents_issued") or []
     doc_data = [[_p("<b>Тип</b>", st["small"]), _p("<b>Номер</b>", st["small_ctr"]),
                  _p("<b>На вид работ</b>", st["small"])]]
@@ -694,24 +694,13 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
     story.append(_tbl(doc_data, [3.5 * cm, 2.5 * cm, 11.5 * cm],
         [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
          ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))]))
-    story.append(_sp(8))
+    story.append(_sp(4))
 
-    # ── 7. Задание на следующую смену ──────────────────────────────────────
-    story += [
-        _p("<b>7. ЗАДАНИЕ НА СЛЕДУЮЩУЮ СМЕНУ</b>", st["bold"], after=4),
-        _tbl([[_p(report.get("next_shift_plan") or "____________________", st["justify"])]],
-             [17.5 * cm],
-             [("BOX", (0, 0), (-1, -1), 0.5, colors.black),
-              ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]),
-        _sp(12),
-        HRFlowable(width="100%", thickness=0.5, color=colors.black),
-        _sp(6),
-    ]
-
-    # ── Подписи ───────────────────────────────────────────────────────────
+    # ── 7. Задание + подписи — держим вместе на одной странице ────────────
     foreman  = report.get("shift_foreman") or "____________________"
     tech_sup = project.get("technical_supervisor") or "____________________"
-    story.append(_tbl(
+
+    sign_tbl = _tbl(
         [[_p("<b>Прораб / Начальник смены</b>", st["small"]),
           _p("<b>Технический надзор заказчика</b>", st["small"])],
          [_p(f"____________ {foreman}", st["sign"]),
@@ -719,7 +708,19 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
          [_p(f"«____» ________ {shift_year}", st["small"]),
           _p(f"«____» ________ {shift_year}", st["small"])]],
         [8.5 * cm, 9 * cm],
-    ))
+    )
+
+    story.append(KeepTogether([
+        _p("<b>7. ЗАДАНИЕ НА СЛЕДУЮЩУЮ СМЕНУ</b>", st["bold"], after=2),
+        _tbl([[_p(report.get("next_shift_plan") or "____________________", st["justify"])]],
+             [17.5 * cm],
+             [("BOX", (0, 0), (-1, -1), 0.5, colors.black),
+              ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]),
+        _sp(8),
+        HRFlowable(width="100%", thickness=0.5, color=colors.black),
+        _sp(5),
+        sign_tbl,
+    ]))
 
     doc.build(story)
     return buf.getvalue()
