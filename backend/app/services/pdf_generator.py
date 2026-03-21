@@ -622,7 +622,7 @@ def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
     pt = _tbl(p_data, [3.5 * cm, 1.5 * cm],
               [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))])
-    mt = _tbl(m_data, [5.5 * cm, 3 * cm, 2 * cm],
+    mt = _tbl(m_data, [6 * cm, 2.5 * cm, 2 * cm],
               [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))])
     story.append(_tbl([[pt, mt]], [5.5 * cm, 10.5 * cm]))
