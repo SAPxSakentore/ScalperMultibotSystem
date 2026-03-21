@@ -62,6 +62,17 @@ export const normativesApi = {
   list: () => api.get('/normatives'),
 }
 
+export const statsApi = {
+  get: () => api.get('/stats'),
+}
+
+export const workSectionsApi = {
+  list: (projectId) => api.get(`/work-sections/project/${projectId}`),
+  create: (data) => api.post('/work-sections/', data),
+  update: (id, data) => api.patch(`/work-sections/${id}`, data),
+  delete: (id) => api.delete(`/work-sections/${id}`),
+}
+
 export const shiftReportsApi = {
   phases: () => api.get('/shift-reports/phases'),
   list: (projectId, params) => api.get(`/shift-reports/projects/${projectId}/`, { params }),

@@ -104,6 +104,27 @@ class GenerateTightnessTestRequest(BaseModel):
     foreman: Optional[str] = None
 
 
+class GeneratePneumaticTestRequest(BaseModel):
+    project_id: str
+    section_chainage: str
+    length_m: Optional[float] = None
+    strength_pressure_mpa: Optional[float] = None
+    tightness_pressure_mpa: Optional[float] = None
+    strength_hours: Optional[int] = 24
+    tightness_hours: Optional[int] = 12
+    test_date: Optional[str] = None
+    foreman: Optional[str] = None
+
+
+class GenerateIntermediateAcceptanceRequest(BaseModel):
+    project_id: str
+    structure_name: str
+    chainage: Optional[str] = None
+    scope: Optional[str] = None
+    normative: Optional[str] = "СНиП РК 3.01.01-2008*"
+    attached_docs: Optional[List[str]] = None
+
+
 class GeneratePPRRequest(BaseModel):
     project_id: str
     installation_method: Optional[str] = "открытая траншея"
@@ -422,6 +443,50 @@ async def generate_tightness_test(request: GenerateTightnessTestRequest, db: Asy
         file_path=file_path, file_format="docx", auto_generated=True,
         content_json=test_dict,
         normative_refs=["ГОСТ 24054-80", "СП РК 2.04-103-2013* п.10"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/pneumatic-test", response_model=DocumentResponse)
+async def generate_pneumatic_test(request: GeneratePneumaticTestRequest, db: AsyncSession = Depends(get_db)):
+    """Акт пневматических испытаний трубопровода."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    test_dict = request.model_dump(exclude={"project_id"})
+    file_path = document_generator.generate_pneumatic_test_act(project_dict, test_dict)
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.PNEUMATIC_TEST,
+        title=f"Акт пневматических испытаний — ПК {request.section_chainage}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        content_json=test_dict,
+        normative_refs=["ГОСТ 24054-80", "СНиП 3.05.02-88*", "СП РК 2.04-103-2013*"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/intermediate-acceptance", response_model=DocumentResponse)
+async def generate_intermediate_acceptance(request: GenerateIntermediateAcceptanceRequest, db: AsyncSession = Depends(get_db)):
+    """Акт промежуточной приёмки ответственных конструкций."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    act_dict = request.model_dump(exclude={"project_id"})
+    file_path = document_generator.generate_intermediate_acceptance_act(project_dict, act_dict)
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.INTERMEDIATE_ACCEPTANCE,
+        title=f"Акт промежуточной приёмки — {request.structure_name}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        content_json=act_dict,
+        normative_refs=["СНиП РК 3.01.01-2008*", "СП РК 1.04.02-2019"],
         status=DocumentStatus.DRAFT,
     )
     db.add(doc)

@@ -686,6 +686,161 @@ class DocumentGenerator:
 
         return self._save_document(doc, "TightnessTest", project_data.get("code", "PROJ"))
 
+    def generate_pneumatic_test_act(self, project_data: Dict, test_data: Dict) -> str:
+        """
+        Акт пневматических испытаний трубопровода.
+        ГОСТ 24054-80, СНиП 3.05.02-88*, СП РК 2.04-103-2013*
+        """
+        doc = Document()
+
+        title = doc.add_heading("АКТ ПНЕВМАТИЧЕСКОГО ИСПЫТАНИЯ ТРУБОПРОВОДА", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"Объект: {project_data.get('name', '')}\n"
+            f"Подрядчик: {project_data.get('contractor_name', '')}\n"
+            f"Заказчик: {project_data.get('customer_name', '')}\n"
+            f"Дата испытания: {test_data.get('test_date', datetime.now().strftime('%d.%m.%Y'))}"
+        )
+
+        doc.add_paragraph()
+        doc.add_heading("Характеристики испытуемого участка:", level=2)
+        params = doc.add_table(rows=7, cols=2)
+        params.style = "Table Grid"
+        _set_table_borders(params)
+        for i, (lbl, val) in enumerate([
+            ("Участок (ПК):", test_data.get("section_chainage", "")),
+            ("Длина участка:", f"{test_data.get('length_m', '')} м"),
+            ("Диаметр:", f"DN{project_data.get('diameter_mm', '')} мм"),
+            ("Испытательная среда:", "воздух / инертный газ"),
+            ("Рабочее давление:", f"{project_data.get('working_pressure_mpa', '')} МПа"),
+            ("Испытательное давление (прочность):", f"{test_data.get('strength_pressure_mpa', '')} МПа"),
+            ("Испытательное давление (герметичность):", f"{test_data.get('tightness_pressure_mpa', '')} МПа"),
+        ]):
+            params.rows[i].cells[0].text = lbl
+            params.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+            params.rows[i].cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_heading("Результаты испытания на прочность:", level=2)
+        r1 = doc.add_table(rows=3, cols=2)
+        r1.style = "Table Grid"
+        _set_table_borders(r1)
+        for i, (lbl, val) in enumerate([
+            ("Давление в начале выдержки:", f"{test_data.get('strength_p_start', '')} МПа"),
+            ("Давление в конце выдержки:", f"{test_data.get('strength_p_end', '')} МПа"),
+            ("Выдержка:", f"{test_data.get('strength_hours', 24)} ч — {test_data.get('strength_result', 'УДОВЛЕТВОРИТЕЛЬНО')}"),
+        ]):
+            r1.rows[i].cells[0].text = lbl
+            r1.rows[i].cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_heading("Результаты испытания на герметичность:", level=2)
+        r2 = doc.add_table(rows=3, cols=2)
+        r2.style = "Table Grid"
+        _set_table_borders(r2)
+        for i, (lbl, val) in enumerate([
+            ("Давление в начале выдержки:", f"{test_data.get('tightness_p_start', '')} МПа"),
+            ("Давление в конце выдержки:", f"{test_data.get('tightness_p_end', '')} МПа"),
+            ("Выдержка:", f"{test_data.get('tightness_hours', 12)} ч — {test_data.get('tightness_result', 'УДОВЛЕТВОРИТЕЛЬНО')}"),
+        ]):
+            r2.rows[i].cells[0].text = lbl
+            r2.rows[i].cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            "ЗАКЛЮЧЕНИЕ: Трубопровод прошёл пневматические испытания на прочность и герметичность "
+            "в соответствии с ГОСТ 24054-80 и СП РК 2.04-103-2013*. "
+            "Видимых дефектов и утечек не обнаружено. "
+            "Трубопровод считается выдержавшим пневматические испытания."
+        )
+        doc.add_paragraph("Нормативные документы: ГОСТ 24054-80, СНиП 3.05.02-88*, СП РК 2.04-103-2013*")
+        doc.add_paragraph()
+
+        sig = doc.add_table(rows=2, cols=3)
+        sig.style = "Table Grid"
+        _set_table_borders(sig)
+        sig.rows[0].cells[0].text = "Производитель работ:"
+        sig.rows[0].cells[1].text = test_data.get("foreman", "")
+        sig.rows[0].cells[2].text = "____________"
+        sig.rows[1].cells[0].text = "Технический надзор:"
+        sig.rows[1].cells[1].text = project_data.get("technical_supervisor", "")
+        sig.rows[1].cells[2].text = "____________"
+
+        return self._save_document(doc, "PneumaticTest", project_data.get("code", "PROJ"))
+
+    def generate_intermediate_acceptance_act(self, project_data: Dict, act_data: Dict) -> str:
+        """
+        Акт промежуточной приёмки ответственных конструкций.
+        СНиП РК 3.01.01-2008*, СП РК 1.04.02-2019
+        """
+        doc = Document()
+
+        title = doc.add_heading(
+            "АКТ ПРОМЕЖУТОЧНОЙ ПРИЁМКИ ОТВЕТСТВЕННЫХ КОНСТРУКЦИЙ", 0
+        )
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph(
+            f"(СНиП РК 3.01.01-2008* п.8.7, СП РК 1.04.02-2019)"
+        ).alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"г. {project_data.get('region', '')}    «___» _________ {datetime.now().year} г."
+        )
+
+        doc.add_paragraph()
+        doc.add_heading("Данные о конструкции:", level=2)
+        info = doc.add_table(rows=6, cols=2)
+        info.style = "Table Grid"
+        _set_table_borders(info)
+        for i, (lbl, val) in enumerate([
+            ("Объект:", project_data.get("name", "")),
+            ("Наименование конструкции:", act_data.get("structure_name", "")),
+            ("Участок (ПК):", act_data.get("chainage", "")),
+            ("Нормативный документ:", act_data.get("normative", "СНиП РК")),
+            ("Подрядчик:", project_data.get("contractor_name", "")),
+            ("Заказчик:", project_data.get("customer_name", "")),
+        ]):
+            info.rows[i].cells[0].text = lbl
+            info.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+            info.rows[i].cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"Настоящий акт составлен в том, что подрядная организация "
+            f"«{project_data.get('contractor_name', '')}» выполнила "
+            f"«{act_data.get('structure_name', 'конструкции')}» в объёме "
+            f"«{act_data.get('scope', '')}» в соответствии с проектной документацией "
+            f"и требованиями нормативных документов."
+        )
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            "На основании проведённой проверки и освидетельствования: "
+            "конструкции признаются ПРИНЯТЫМИ и разрешается продолжение строительства."
+        ).runs[0].bold = True
+
+        doc.add_paragraph()
+        doc.add_paragraph("Прилагаемая исполнительная документация:")
+        for item in act_data.get("attached_docs", ["Исполнительная схема", "Лабораторные заключения", "Сертификаты материалов"]):
+            p = doc.add_paragraph(f"— {item}")
+            p.paragraph_format.left_indent = Cm(1)
+
+        doc.add_paragraph()
+        sig = doc.add_table(rows=3, cols=3)
+        sig.style = "Table Grid"
+        _set_table_borders(sig)
+        sig.rows[0].cells[0].text = "Производитель работ (подрядчик):"
+        sig.rows[0].cells[2].text = "____________"
+        sig.rows[1].cells[0].text = "Авторский надзор (проектировщик):"
+        sig.rows[1].cells[2].text = "____________"
+        sig.rows[2].cells[0].text = "Технический надзор (заказчик):"
+        sig.rows[2].cells[2].text = "____________"
+
+        return self._save_document(doc, "IntermediateAcceptance", project_data.get("code", "PROJ"))
+
     def generate_welding_journal(self, project_data: Dict, entries: List = None) -> str:
         """
         Журнал производства сварочных работ.

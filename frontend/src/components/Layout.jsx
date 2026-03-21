@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, FolderOpen, FileText, Users, BookOpen, Menu, X, Building2
+  LayoutDashboard, FolderOpen, FileText, Users, BookOpen, Menu, X, Building2, BarChart2
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/documents', icon: FileText, label: 'Документы' },
   { to: '/agents', icon: Users, label: 'Команда' },
   { to: '/normatives', icon: BookOpen, label: 'Нормативы РК' },
+  { to: '/statistics', icon: BarChart2, label: 'Статистика' },
 ]
 
 export default function Layout() {

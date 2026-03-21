@@ -564,7 +564,62 @@ async def finalize_shift_report(
         await db.refresh(aosr_doc)
         generated_docs.append({"type": "aosr", "id": aosr_doc.id, "title": aosr_doc.title})
 
-    # ── 3. Акт гидроиспытаний ────────────────────────────────────────────────
+    # ── 3. Журнал изоляционных работ — фаза изоляции ────────────────────────
+    if phase == ConstructionPhase.ISOLATION:
+        isol_entries = [{
+            "date": shift_date_str,
+            "chainage": f"{r.chainage_start or '—'} — {r.chainage_end or '—'}",
+            "coating_type": "2-слойная ПЭ лента",
+            "material": "Полилен 40-Антикор",
+            "thickness_mm": "3.5",
+            "spark_test_v": "5000",
+            "result": "Удовл.",
+            "temp_c": "—",
+            "executor": r.shift_foreman or "—",
+        }]
+        isol_path = document_generator.generate_isolation_journal(project_dict, isol_entries)
+        isol_doc = DocModel(
+            project_id=proj.id,
+            document_type=DocumentType.ISOLATION_JOURNAL,
+            title=f"Журнал изоляционных работ — {shift_date_str}",
+            file_path=isol_path, file_format="docx", auto_generated=True,
+            content_json={"shift_report_id": report_id},
+            normative_refs=["ГОСТ 9.602-2016", "ВСН 012-88 ч.II"],
+            status=DocumentStatus.DRAFT,
+        )
+        db.add(isol_doc)
+        await db.flush()
+        await db.refresh(isol_doc)
+        generated_docs.append({"type": "isolation_journal", "id": isol_doc.id, "title": isol_doc.title})
+
+    # ── 4. Журнал сварочных работ — фаза сварки ──────────────────────────────
+    if phase == ConstructionPhase.WELDING:
+        weld_entries = [{
+            "date": shift_date_str,
+            "joint_no": "см. журнал",
+            "chainage": f"{r.chainage_start or '—'} — {r.chainage_end or '—'}",
+            "pipe_size": f"DN{project_dict.get('diameter_mm', '')} x {14}",
+            "welder_name": "—",
+            "welder_cert": "—",
+            "method": "РАД",
+            "result": "Удовл.",
+        }]
+        weld_path = document_generator.generate_welding_journal(project_dict, weld_entries)
+        weld_doc = DocModel(
+            project_id=proj.id,
+            document_type=DocumentType.WELDING_JOURNAL,
+            title=f"Журнал сварочных работ — {shift_date_str}",
+            file_path=weld_path, file_format="docx", auto_generated=True,
+            content_json={"shift_report_id": report_id},
+            normative_refs=["ВСН 012-88", "РД РК 3.01.001-2019"],
+            status=DocumentStatus.DRAFT,
+        )
+        db.add(weld_doc)
+        await db.flush()
+        await db.refresh(weld_doc)
+        generated_docs.append({"type": "welding_journal", "id": weld_doc.id, "title": weld_doc.title})
+
+    # ── 5. Акт гидроиспытаний ────────────────────────────────────────────────
     if phase == ConstructionPhase.HYDRAULIC_TEST:
         hydraulic_data = {
             "section_chainage": f"{r.chainage_start or '0+00'} — {r.chainage_end or '—'}",

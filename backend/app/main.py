@@ -10,6 +10,7 @@ from app.api.projects import router as projects_router
 from app.api.documents import router as documents_router
 from app.api.agents import router as agents_router
 from app.api.shift_reports import router as shift_reports_router
+from app.api.work_sections import router as work_sections_router
 
 
 @asynccontextmanager
@@ -52,6 +53,7 @@ app.include_router(projects_router)
 app.include_router(documents_router)
 app.include_router(agents_router)
 app.include_router(shift_reports_router)
+app.include_router(work_sections_router)
 
 
 @app.get("/api/health")
@@ -66,26 +68,87 @@ async def health_check():
 
 @app.get("/api/stats")
 async def get_stats():
-    """Статистика системы для дашборда."""
+    """Расширенная статистика системы для дашборда и страницы Statistics."""
     from app.core.database import AsyncSessionLocal
     from sqlalchemy import select, func
-    from app.models.project import Project
-    from app.models.document import Document
+    from app.models.project import Project, ProjectStatus, ProjectType
+    from app.models.document import Document, DocumentType, DocumentStatus
     from app.models.shift_report import ShiftReport
 
-    async with AsyncSessionLocal() as session:
-        projects_count = (await session.execute(select(func.count()).select_from(Project))).scalar()
-        docs_count = (await session.execute(select(func.count()).select_from(Document))).scalar()
-        reports_count = (await session.execute(select(func.count()).select_from(ShiftReport))).scalar()
-        finalized_count = (await session.execute(
+    async with AsyncSessionLocal() as db:
+        # --- Проекты ---
+        projects_count = (await db.execute(select(func.count()).select_from(Project))).scalar()
+        active_projects = (await db.execute(
+            select(func.count()).select_from(Project)
+            .where(Project.status.in_([
+                ProjectStatus.CONSTRUCTION, ProjectStatus.TESTING, ProjectStatus.COMMISSIONING,
+            ]))
+        )).scalar()
+
+        # Проекты по статусу
+        status_rows = (await db.execute(
+            select(Project.status, func.count()).group_by(Project.status)
+        )).all()
+        projects_by_status = {r[0]: r[1] for r in status_rows}
+
+        # Проекты по типу
+        type_rows = (await db.execute(
+            select(Project.project_type, func.count()).group_by(Project.project_type)
+        )).all()
+        projects_by_type = {r[0]: r[1] for r in type_rows}
+
+        # --- Документы ---
+        docs_count = (await db.execute(select(func.count()).select_from(Document))).scalar()
+        signed_docs = (await db.execute(
+            select(func.count()).select_from(Document)
+            .where(Document.status.in_([DocumentStatus.APPROVED, DocumentStatus.SIGNED]))
+        )).scalar()
+        draft_docs = (await db.execute(
+            select(func.count()).select_from(Document).where(Document.status == DocumentStatus.DRAFT)
+        )).scalar()
+
+        # Документы по типу
+        doc_type_rows = (await db.execute(
+            select(Document.document_type, func.count()).group_by(Document.document_type)
+        )).all()
+        docs_by_type = {r[0]: r[1] for r in doc_type_rows}
+
+        # --- Сменные рапорты ---
+        reports_count = (await db.execute(select(func.count()).select_from(ShiftReport))).scalar()
+        finalized_count = (await db.execute(
             select(func.count()).select_from(ShiftReport).where(ShiftReport.is_finalized == True)
         )).scalar()
 
+        # Рапорты по месяцам (последние 6 мес.)
+        monthly_rows = (await db.execute(
+            select(
+                func.strftime('%Y-%m', ShiftReport.shift_date).label('month'),
+                func.count()
+            )
+            .group_by(func.strftime('%Y-%m', ShiftReport.shift_date))
+            .order_by(func.strftime('%Y-%m', ShiftReport.shift_date).desc())
+            .limit(6)
+        )).all()
+        reports_by_month = [{"month": r[0], "count": r[1]} for r in reversed(monthly_rows)]
+
     return {
-        "projects": projects_count,
-        "documents": docs_count,
-        "shift_reports": reports_count,
-        "finalized_reports": finalized_count,
+        "projects": {
+            "total": projects_count,
+            "active": active_projects,
+            "by_status": projects_by_status,
+            "by_type": projects_by_type,
+        },
+        "documents": {
+            "total": docs_count,
+            "signed": signed_docs,
+            "draft": draft_docs,
+            "by_type": docs_by_type,
+        },
+        "shift_reports": {
+            "total": reports_count,
+            "finalized": finalized_count,
+            "by_month": reports_by_month,
+        },
     }
 
 

@@ -1,11 +1,12 @@
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useCallback } from 'react'
-import { projectsApi, documentsApi, shiftReportsApi } from '../utils/api'
+import { projectsApi, documentsApi, shiftReportsApi, workSectionsApi } from '../utils/api'
 import {
   FileText, Loader2, CheckSquare, BarChart2, AlertTriangle,
   ClipboardList, Upload, Trash2, BookOpen, ChevronDown, ChevronUp,
   FileCheck, X, CheckCircle2, TrendingUp, Download, AlertOctagon,
+  Plus, MapPin, Calendar, User, Check, Pencil,
 } from 'lucide-react'
 import TraceProgress from '../components/TraceProgress'
 
@@ -46,7 +47,7 @@ function ProgressBadge({ projectId }) {
   )
 }
 
-const TAB_LABELS = ['Обзор', 'ИТД', 'Прогресс', 'Документы', 'ПД/ППР']
+const TAB_LABELS = ['Обзор', 'ИТД', 'Прогресс', 'Разделы работ', 'Документы', 'ПД/ППР']
 
 const DOC_CATEGORIES = ['ПОС', 'ППР', 'ПД', 'НТД', 'Экспертиза', 'прочее']
 
@@ -286,8 +287,11 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* Tab 3: Documents */}
-      {tab === 3 && (
+      {/* Tab 3: Work Sections */}
+      {tab === 3 && <WorkSectionsTab projectId={id} />}
+
+      {/* Tab 4: Documents */}
+      {tab === 4 && (
         <div className="space-y-4">
           <div className="flex gap-3 flex-wrap">
             <button
@@ -353,8 +357,176 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* Tab 4: PDF Upload */}
-      {tab === 4 && <PdfUploadTab projectId={id} />}
+      {/* Tab 5: PDF Upload */}
+      {tab === 5 && <PdfUploadTab projectId={id} />}
+    </div>
+  )
+}
+
+// ─── Таб разделов работ ───────────────────────────────────────────────────────
+
+const STATUS_LABELS = {
+  planned: { label: 'Запланирован', color: 'bg-slate-100 text-slate-600' },
+  in_progress: { label: 'В работе', color: 'bg-blue-100 text-blue-700' },
+  completed: { label: 'Завершён', color: 'bg-emerald-100 text-emerald-700' },
+  accepted: { label: 'Принят', color: 'bg-green-100 text-green-800' },
+  rejected: { label: 'Отклонён', color: 'bg-red-100 text-red-700' },
+}
+
+function WorkSectionsTab({ projectId }) {
+  const queryClient = useQueryClient()
+  const [showForm, setShowForm] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [editPct, setEditPct] = useState(0)
+  const [editStatus, setEditStatus] = useState('planned')
+  const [form, setForm] = useState({ name: '', chainage_start: '', chainage_end: '', length_m: '', foreman: '', engineer: '' })
+
+  const { data: sections = [], isLoading } = useQuery({
+    queryKey: ['work-sections', projectId],
+    queryFn: () => workSectionsApi.list(projectId).then(r => r.data),
+  })
+
+  const createMut = useMutation({
+    mutationFn: (data) => workSectionsApi.create({ project_id: projectId, ...data }),
+    onSuccess: () => { queryClient.invalidateQueries(['work-sections', projectId]); setShowForm(false); setForm({ name: '', chainage_start: '', chainage_end: '', length_m: '', foreman: '', engineer: '' }) },
+  })
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }) => workSectionsApi.update(id, data),
+    onSuccess: () => { queryClient.invalidateQueries(['work-sections', projectId]); setEditId(null) },
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => workSectionsApi.delete(id),
+    onSuccess: () => queryClient.invalidateQueries(['work-sections', projectId]),
+  })
+
+  if (isLoading) return <div className="text-center py-8 text-slate-400">Загрузка...</div>
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-slate-700">Разделы работ / Участки</h3>
+        <button
+          onClick={() => setShowForm(s => !s)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+        >
+          <Plus size={14} /> Добавить участок
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="col-span-2 md:col-span-3">
+              <label className="text-xs text-slate-500 mb-1 block">Наименование *</label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Укладка трубы, Сварка..." />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">ПК начало</label>
+              <input value={form.chainage_start} onChange={e => setForm(f => ({ ...f, chainage_start: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ПК 0+00" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">ПК конец</label>
+              <input value={form.chainage_end} onChange={e => setForm(f => ({ ...f, chainage_end: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ПК 5+00" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Длина, м</label>
+              <input type="number" value={form.length_m} onChange={e => setForm(f => ({ ...f, length_m: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="500" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Прораб</label>
+              <input value={form.foreman} onChange={e => setForm(f => ({ ...f, foreman: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Инженер</label>
+              <input value={form.engineer} onChange={e => setForm(f => ({ ...f, engineer: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-slate-50">Отмена</button>
+            <button
+              onClick={() => createMut.mutate(form)}
+              disabled={!form.name || createMut.isPending}
+              className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {createMut.isPending ? 'Создание...' : 'Создать'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sections.length === 0 && !showForm ? (
+        <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-slate-200">
+          <MapPin size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="font-medium">Нет разделов работ</p>
+          <p className="text-sm mt-1">Добавьте участки трубопровода или виды работ</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {sections.map(s => {
+            const st = STATUS_LABELS[s.status] || STATUS_LABELS.planned
+            const isEdit = editId === s.id
+            return (
+              <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-slate-800 truncate">{s.name}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.color}`}>{st.label}</span>
+                    </div>
+                    <div className="flex items-center gap-4 mt-1 text-xs text-slate-500 flex-wrap">
+                      {(s.chainage_start || s.chainage_end) && (
+                        <span className="flex items-center gap-1"><MapPin size={10} />{s.chainage_start} — {s.chainage_end}</span>
+                      )}
+                      {s.length_m && <span>{s.length_m} м</span>}
+                      {s.foreman && <span className="flex items-center gap-1"><User size={10} />{s.foreman}</span>}
+                    </div>
+                    {/* Progress bar */}
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${s.progress_pct}%` }} />
+                      </div>
+                      <span className="text-xs text-slate-500 w-8 text-right">{s.progress_pct}%</span>
+                    </div>
+                    {isEdit && (
+                      <div className="mt-3 flex items-center gap-3">
+                        <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className="border rounded-lg px-2 py-1 text-sm">
+                          {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                        </select>
+                        <input type="range" min="0" max="100" value={editPct} onChange={e => setEditPct(+e.target.value)} className="w-28" />
+                        <span className="text-sm text-slate-600 w-8">{editPct}%</span>
+                        <button
+                          onClick={() => updateMut.mutate({ id: s.id, data: { status: editStatus, progress_pct: editPct } })}
+                          className="px-3 py-1 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                        >
+                          <Check size={12} />
+                        </button>
+                        <button onClick={() => setEditId(null)} className="px-3 py-1 text-xs border rounded-lg hover:bg-slate-50">Отмена</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={() => { setEditId(s.id); setEditPct(s.progress_pct); setEditStatus(s.status) }}
+                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                      title="Редактировать"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => { if (confirm('Удалить раздел?')) deleteMut.mutate(s.id) }}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

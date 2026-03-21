@@ -8,6 +8,7 @@ import Agents from './pages/Agents'
 import AgentChat from './pages/AgentChat'
 import Normatives from './pages/Normatives'
 import ShiftReports from './pages/ShiftReports'
+import Statistics from './pages/Statistics'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="agents" element={<Agents />} />
         <Route path="agents/:role/chat" element={<AgentChat />} />
         <Route path="normatives" element={<Normatives />} />
+        <Route path="statistics" element={<Statistics />} />
       </Route>
     </Routes>
   )
