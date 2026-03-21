@@ -9,6 +9,7 @@ from app.core.database import init_db
 from app.api.projects import router as projects_router
 from app.api.documents import router as documents_router
 from app.api.agents import router as agents_router
+from app.api.shift_reports import router as shift_reports_router
 
 
 @asynccontextmanager
@@ -50,6 +51,7 @@ app.add_middleware(
 app.include_router(projects_router)
 app.include_router(documents_router)
 app.include_router(agents_router)
+app.include_router(shift_reports_router)
 
 
 @app.get("/api/health")

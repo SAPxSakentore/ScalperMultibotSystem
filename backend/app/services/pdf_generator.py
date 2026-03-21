@@ -500,3 +500,226 @@ def _generic_pdf(project: Dict, doc_type: str, content: Dict) -> bytes:
             story.append(_p(f"<b>{k}:</b> {v}", st["left"], after=3))
     doc.build(story)
     return buf.getvalue()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Сменный производственный рапорт МГ
+# ════════════════════════════════════════════════════════════════════════════
+
+def generate_shift_report_pdf(report: dict, project: dict) -> bytes:
+    """
+    Сформировать PDF сменного рапорта строительства МГ.
+    report — данные ShiftReport (словарь полей модели)
+    project — данные Project
+    """
+    from datetime import datetime as _dt
+    _ensure_fonts()
+    st = _styles()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2 * cm, rightMargin=1.5 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+    )
+
+    shift_dt = report.get("shift_date")
+    if isinstance(shift_dt, str):
+        try:
+            shift_dt = _dt.fromisoformat(shift_dt)
+        except Exception:
+            shift_dt = None
+    shift_date_str = shift_dt.strftime("%d.%m.%Y") if shift_dt else "__.__.____"
+    shift_year = shift_dt.year if shift_dt else "____"
+
+    shift_num_val = report.get("shift_number", "day")
+    shift_name = "Дневная (1-я)" if shift_num_val == "day" else "Ночная (2-я)"
+
+    try:
+        from app.models.shift_report import PHASE_NAMES_RU, ConstructionPhase
+        phase_names = PHASE_NAMES_RU
+    except ImportError:
+        phase_names = {}
+
+    phase_val = report.get("construction_phase", "")
+    phase_ru = phase_names.get(phase_val, "") or phase_names.get(
+        next((p for p in phase_names if hasattr(p, "value") and p.value == phase_val), None),
+        phase_val,
+    )
+
+    story = []
+
+    # ── Заголовок ──────────────────────────────────────────────────────────
+    story += [
+        _p("<b>СМЕННЫЙ ПРОИЗВОДСТВЕННЫЙ РАПОРТ</b>", st["bold_ctr"], after=2),
+        _p("<b>строительства магистрального газопровода</b>", st["bold_ctr"], after=2),
+        _p(project.get("name") or "", st["center"], after=2),
+        _p(
+            f"Шифр: {project.get('code') or '—'}    "
+            f"DN{int(project.get('diameter_mm') or 0)} мм    "
+            f"Pраб: {project.get('working_pressure_mpa') or '—'} МПа",
+            st["center"], after=6,
+        ),
+        HRFlowable(width="100%", thickness=1, color=colors.black),
+        _sp(4),
+    ]
+
+    # ── Шапка рапорта ──────────────────────────────────────────────────────
+    hdr_rows = [
+        [_p("<b>Дата:</b>", st["small"]), _p(shift_date_str, st["small"]),
+         _p("<b>Смена:</b>", st["small"]), _p(shift_name, st["small"])],
+        [_p("<b>Прораб:</b>", st["small"]),
+         _p(report.get("shift_foreman") or "____________________", st["small"]),
+         _p("<b>Фаза строительства:</b>", st["small"]),
+         _p(phase_ru or phase_val, st["small"])],
+        [_p("<b>Участок (ПК):</b>", st["small"]),
+         _p(f"{report.get('chainage_start') or '—'} — {report.get('chainage_end') or '—'}", st["small"]),
+         _p("<b>Объём за смену:</b>", st["small"]),
+         _p(f"{report.get('length_done_m') or 0:.1f} м", st["small"])],
+        [_p("<b>Погода утро:</b>", st["small"]), _p(report.get("weather_morning") or "—", st["small"]),
+         _p("<b>Погода день:</b>", st["small"]), _p(report.get("weather_afternoon") or "—", st["small"])],
+        [_p("<b>Заказчик:</b>", st["small"]), _p(project.get("customer_name") or "—", st["small"]),
+         _p("<b>Подрядчик:</b>", st["small"]), _p(project.get("contractor_name") or "—", st["small"])],
+    ]
+    story.append(_tbl(
+        hdr_rows, [3.5 * cm, 6 * cm, 3.5 * cm, 4.5 * cm],
+        [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F0F4FF")),
+         ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F0F4FF"))],
+    ))
+    story.append(_sp(8))
+
+    # ── 1. Выполненные работы ──────────────────────────────────────────────
+    story.append(_p("<b>1. ВЫПОЛНЕННЫЕ РАБОТЫ ЗА СМЕНУ</b>", st["bold"], after=4))
+    works = report.get("works_done") or []
+    w_data = [[_p("<b>№</b>", st["small_ctr"]), _p("<b>Вид работ</b>", st["small_ctr"]),
+               _p("<b>Ед.</b>", st["small_ctr"]), _p("<b>Кол-во</b>", st["small_ctr"]),
+               _p("<b>ПК</b>", st["small_ctr"]), _p("<b>Примечание</b>", st["small_ctr"])]]
+    for i, w in enumerate(works, 1):
+        w_data.append([_p(str(i), st["small_ctr"]), _p(w.get("work_type") or "", st["small"]),
+                       _p(w.get("unit") or "", st["small_ctr"]), _p(str(w.get("quantity") or ""), st["small_ctr"]),
+                       _p(w.get("chainage") or "", st["small"]), _p(w.get("note") or "", st["small"])])
+    if len(w_data) == 1:
+        w_data.append([_p("", st["small"])] * 6)
+    story.append(_tbl(w_data, [1 * cm, 5.5 * cm, 1.5 * cm, 1.5 * cm, 3.5 * cm, 4.5 * cm],
+        [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))]))
+    story.append(_sp(8))
+
+    # ── 2. Персонал и техника ──────────────────────────────────────────────
+    story.append(_p("<b>2. ПЕРСОНАЛ И ТЕХНИКА</b>", st["bold"], after=4))
+    workers = report.get("workers_on_site") or {}
+    p_data = [[_p("<b>Категория</b>", st["small"]), _p("<b>Чел.</b>", st["small_ctr"])]]
+    for k in ["ИТР", "рабочие", "охрана", "итого"]:
+        p_data.append([_p(k, st["small"]), _p(str(workers.get(k) or "—"), st["small_ctr"])])
+    machinery = report.get("machinery_on_site") or []
+    m_data = [[_p("<b>Техника</b>", st["small"]), _p("<b>Гос. №</b>", st["small_ctr"]), _p("<b>Ч.</b>", st["small_ctr"])]]
+    for m in machinery:
+        m_data.append([_p(m.get("name") or "", st["small"]),
+                       _p(m.get("reg") or "—", st["small_ctr"]),
+                       _p(str(m.get("hours_worked") or ""), st["small_ctr"])])
+    if len(m_data) == 1:
+        m_data.append([_p("—", st["small"])] * 3)
+    pt = _tbl(p_data, [3.5 * cm, 1.5 * cm],
+              [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+               ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))])
+    mt = _tbl(m_data, [6.5 * cm, 2 * cm, 1.5 * cm],
+              [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+               ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))])
+    story.append(_tbl([[pt, mt]], [5.5 * cm, 10.5 * cm]))
+    story.append(_sp(8))
+
+    # ── 3. Материалы ──────────────────────────────────────────────────────
+    story.append(_p("<b>3. ПОСТУПЛЕНИЕ МАТЕРИАЛОВ</b>", st["bold"], after=4))
+    mats = report.get("materials_received") or []
+    mat_data = [[_p("<b>Материал</b>", st["small"]), _p("<b>Кол.</b>", st["small_ctr"]),
+                 _p("<b>Ед.</b>", st["small_ctr"]), _p("<b>№ серт.</b>", st["small"])]]
+    for mat in mats:
+        mat_data.append([_p(mat.get("name") or "", st["small"]),
+                         _p(str(mat.get("quantity") or ""), st["small_ctr"]),
+                         _p(mat.get("unit") or "", st["small_ctr"]),
+                         _p(mat.get("cert_no") or "—", st["small"])])
+    if len(mat_data) == 1:
+        mat_data.append([_p("нет поступлений", st["small"]), _p("", st["small"]),
+                         _p("", st["small"]), _p("", st["small"])])
+    story.append(_tbl(mat_data, [7.5 * cm, 2 * cm, 1.5 * cm, 6.5 * cm],
+        [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))]))
+    story.append(_sp(8))
+
+    # ── 4. Контроль качества ──────────────────────────────────────────────
+    story.append(_p("<b>4. КОНТРОЛЬ КАЧЕСТВА</b>", st["bold"], after=4))
+    qcs = report.get("quality_checks") or []
+    qc_data = [[_p("<b>Вид контроля</b>", st["small"]), _p("<b>Кол.</b>", st["small_ctr"]),
+                _p("<b>Результат</b>", st["small"]), _p("<b>Контролёр</b>", st["small"])]]
+    for qc in qcs:
+        qc_data.append([_p(qc.get("type") or "", st["small"]),
+                        _p(str(qc.get("quantity") or ""), st["small_ctr"]),
+                        _p(qc.get("result") or "", st["small"]),
+                        _p(qc.get("inspector") or "", st["small"])])
+    if len(qc_data) == 1:
+        qc_data.append([_p("нет данных", st["small"]), _p("", st["small"]),
+                        _p("", st["small"]), _p("", st["small"])])
+    story.append(_tbl(qc_data, [6.5 * cm, 1.5 * cm, 5 * cm, 4.5 * cm],
+        [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))]))
+    story.append(_sp(8))
+
+    # ── 5. Простои ────────────────────────────────────────────────────────
+    story.append(_p("<b>5. ПРОСТОИ И НАРУШЕНИЯ</b>", st["bold"], after=4))
+    story.append(_tbl(
+        [[_p("<b>Простой, ч:</b>", st["small"]),
+          _p(f"{report.get('downtime_hours') or 0:.1f}", st["small"]),
+          _p("<b>Причина:</b>", st["small"]),
+          _p(report.get("downtime_reason") or "нет", st["small"])],
+         [_p("<b>Инциденты HSE:</b>", st["small"]),
+          _p(report.get("safety_incidents") or "нет", st["small"]),
+          _p("", st["small"]), _p("", st["small"])]],
+        [3 * cm, 5 * cm, 3 * cm, 6.5 * cm],
+        [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+         ("SPAN", (1, 1), (3, 1))],
+    ))
+    story.append(_sp(8))
+
+    # ── 6. Выданные документы ─────────────────────────────────────────────
+    story.append(_p("<b>6. ВЫДАННЫЕ ДОКУМЕНТЫ ИТД</b>", st["bold"], after=4))
+    docs = report.get("documents_issued") or []
+    doc_data = [[_p("<b>Тип</b>", st["small"]), _p("<b>Номер</b>", st["small_ctr"]),
+                 _p("<b>На вид работ</b>", st["small"])]]
+    for d in docs:
+        doc_data.append([_p(d.get("type") or "", st["small"]),
+                         _p(d.get("number") or "—", st["small_ctr"]),
+                         _p(d.get("work") or "", st["small"])])
+    if len(doc_data) == 1:
+        doc_data.append([_p("нет", st["small"]), _p("", st["small"]), _p("", st["small"])])
+    story.append(_tbl(doc_data, [3.5 * cm, 2.5 * cm, 11.5 * cm],
+        [("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE"))]))
+    story.append(_sp(8))
+
+    # ── 7. Задание на следующую смену ──────────────────────────────────────
+    story += [
+        _p("<b>7. ЗАДАНИЕ НА СЛЕДУЮЩУЮ СМЕНУ</b>", st["bold"], after=4),
+        _tbl([[_p(report.get("next_shift_plan") or "____________________", st["justify"])]],
+             [17.5 * cm],
+             [("BOX", (0, 0), (-1, -1), 0.5, colors.black),
+              ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]),
+        _sp(12),
+        HRFlowable(width="100%", thickness=0.5, color=colors.black),
+        _sp(6),
+    ]
+
+    # ── Подписи ───────────────────────────────────────────────────────────
+    foreman  = report.get("shift_foreman") or "____________________"
+    tech_sup = project.get("technical_supervisor") or "____________________"
+    story.append(_tbl(
+        [[_p("<b>Прораб / Начальник смены</b>", st["small"]),
+          _p("<b>Технический надзор заказчика</b>", st["small"])],
+         [_p(f"____________ {foreman}", st["sign"]),
+          _p(f"____________ {tech_sup}", st["sign"])],
+         [_p(f"«____» ________ {shift_year}", st["small"]),
+          _p(f"«____» ________ {shift_year}", st["small"])]],
+        [8.5 * cm, 9 * cm],
+    ))
+
+    doc.build(story)
+    return buf.getvalue()

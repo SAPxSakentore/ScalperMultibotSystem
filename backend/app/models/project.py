@@ -81,3 +81,5 @@ class Project(Base):
     documents = relationship("Document", back_populates="project", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="project", cascade="all, delete-orphan")
     work_sections = relationship("WorkSection", back_populates="project", cascade="all, delete-orphan")
+    shift_reports = relationship("ShiftReport", back_populates="project", cascade="all, delete-orphan")
+    pdf_uploads = relationship("ProjectPdfUpload", back_populates="project", cascade="all, delete-orphan")
