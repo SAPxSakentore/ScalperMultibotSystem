@@ -47,4 +47,25 @@ export const normativesApi = {
   list: () => api.get('/normatives'),
 }
 
+export const shiftReportsApi = {
+  phases: () => api.get('/shift-reports/phases'),
+  list: (projectId, params) => api.get(`/shift-reports/projects/${projectId}/`, { params }),
+  get: (reportId) => api.get(`/shift-reports/${reportId}`),
+  create: (data) => api.post('/shift-reports/', data),
+  update: (reportId, data) => api.patch(`/shift-reports/${reportId}`, data),
+  delete: (reportId) => api.delete(`/shift-reports/${reportId}`),
+  finalize: (reportId, signedBy) =>
+    api.post(`/shift-reports/${reportId}/finalize`, null, { params: signedBy ? { signed_by: signedBy } : {} }),
+  download: (reportId) => `/api/shift-reports/${reportId}/download`,
+  uploadPdf: (projectId, file, docCategory) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('doc_category', docCategory || 'прочее')
+    return api.post(`/shift-reports/projects/${projectId}/upload-pdf`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  listPdfs: (projectId) => api.get(`/shift-reports/projects/${projectId}/pdfs`),
+}
+
 export default api

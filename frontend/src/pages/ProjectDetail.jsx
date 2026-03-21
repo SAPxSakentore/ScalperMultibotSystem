@@ -1,8 +1,8 @@
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { projectsApi, documentsApi } from '../utils/api'
-import { FileText, Loader2, CheckSquare, BarChart2, AlertTriangle } from 'lucide-react'
+import { FileText, Loader2, CheckSquare, BarChart2, AlertTriangle, ClipboardList } from 'lucide-react'
 
 const TAB_LABELS = ['Обзор', 'ИТД', 'Анализ', 'Документы']
 
@@ -73,6 +73,13 @@ export default function ProjectDetail() {
               <div className="text-sm text-slate-500">Подрядчик: {project.contractor_name}</div>
             )}
           </div>
+          <Link
+            to={`/projects/${id}/shift-reports`}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors shrink-0"
+          >
+            <ClipboardList size={16} />
+            Сменные рапорты
+          </Link>
         </div>
       </div>
 

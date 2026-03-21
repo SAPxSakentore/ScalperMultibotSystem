@@ -448,6 +448,173 @@ async def delete_shift_report(report_id: str, db: AsyncSession = Depends(get_db)
 #  СКАЧАТЬ РАПОРТ КАК PDF
 # ════════════════════════════════════════════════════════════════════════════
 
+# ════════════════════════════════════════════════════════════════════════════
+#  ФИНАЛИЗАЦИЯ РАПОРТА → АВТО-ГЕНЕРАЦИЯ ИТД
+# ════════════════════════════════════════════════════════════════════════════
+
+@router.post("/{report_id}/finalize", summary="Финализировать рапорт и сгенерировать ИТД")
+async def finalize_shift_report(
+    report_id: str,
+    signed_by: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Финализирует рапорт и автоматически создаёт ИТД-документы:
+    - Запись в ОЖР (всегда)
+    - АОСР — если фаза содержит скрытые работы (траншея, сварка, изоляция и т.д.)
+    - Акт гидроиспытаний — если фаза HYDRAULIC_TEST
+    Возвращает список сгенерированных документов.
+    """
+    from app.models.document import Document as DocModel, DocumentType, DocumentStatus
+    from app.models.shift_report import PHASE_TYPICAL_AOSR
+    from app.services.document_generator import document_generator
+
+    r = await db.get(ShiftReport, report_id)
+    if not r:
+        raise HTTPException(404, "Рапорт не найден")
+    if r.is_finalized:
+        raise HTTPException(400, "Рапорт уже финализирован")
+
+    proj = await db.get(Project, r.project_id)
+    if not proj:
+        raise HTTPException(404, "Проект не найден")
+
+    project_dict = _project_dict(proj)
+    report_dict = _report_to_dict(r)
+    phase = r.construction_phase
+    shift_date_str = r.shift_date.strftime("%d.%m.%Y") if r.shift_date else "—"
+
+    generated_docs = []
+
+    # ── 1. Запись в ОЖР ──────────────────────────────────────────────────────
+    works_list = r.works_done or []
+    ojr_entries = [
+        {
+            "date": shift_date_str,
+            "phase": PHASE_NAMES_RU.get(phase, phase.value if phase else "—"),
+            "chainage": f"{r.chainage_start or '—'} — {r.chainage_end or '—'}",
+            "work_type": w.get("work_type", ""),
+            "unit": w.get("unit", ""),
+            "quantity": w.get("quantity", ""),
+            "foreman": r.shift_foreman or "—",
+        }
+        for w in works_list
+    ] or [{
+        "date": shift_date_str,
+        "phase": PHASE_NAMES_RU.get(phase, "—"),
+        "chainage": f"{r.chainage_start or '—'} — {r.chainage_end or '—'}",
+        "work_type": "Производство работ согласно рапорту",
+        "unit": "м",
+        "quantity": r.length_done_m or 0,
+        "foreman": r.shift_foreman or "—",
+    }]
+
+    ojr_path = document_generator.generate_ojr(project_dict, ojr_entries)
+    ojr_doc = DocModel(
+        project_id=proj.id,
+        document_type=DocumentType.OJR,
+        title=f"ОЖР — {shift_date_str} ({PHASE_NAMES_RU.get(phase, '')})",
+        file_path=ojr_path,
+        file_format="docx",
+        auto_generated=True,
+        content_json={"shift_report_id": report_id, "entries": ojr_entries},
+        normative_refs=["СП РК 1.04.02-2019"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(ojr_doc)
+    await db.flush()
+    await db.refresh(ojr_doc)
+    generated_docs.append({"type": "ojr", "id": ojr_doc.id, "title": ojr_doc.title})
+
+    # ── 2. АОСР — только если фаза содержит скрытые работы ──────────────────
+    if phase in PHASE_TYPICAL_AOSR:
+        typical_works = PHASE_TYPICAL_AOSR[phase]
+        work_name = typical_works[0] if typical_works else PHASE_NAMES_RU.get(phase, "")
+        normatives = PHASE_NORMATIVES.get(phase, ["СП РК 2.04-103-2013*"])
+
+        aosr_data = {
+            "work_name": work_name,
+            "chainage": f"{r.chainage_start or '—'} — {r.chainage_end or '—'}",
+            "work_date": shift_date_str,
+            "materials": [
+                m.get("name", "—")
+                for m in (r.materials_received or [])
+            ] or ["Согласно проекту"],
+            "normatives": normatives,
+            "foreman": r.shift_foreman or "—",
+            "author_supervisor": project_dict.get("technical_supervisor", "—"),
+            "act_number": f"АОСР-{shift_date_str.replace('.', '')}-{phase.value[:4].upper()}",
+            "next_works": r.next_shift_plan or "Согласно ПОС/ППР",
+        }
+        aosr_path = document_generator.generate_aosr(project_dict, aosr_data)
+        aosr_doc = DocModel(
+            project_id=proj.id,
+            document_type=DocumentType.AOSR,
+            document_number=aosr_data["act_number"],
+            title=f"АОСР — {work_name} — {shift_date_str}",
+            file_path=aosr_path,
+            file_format="docx",
+            auto_generated=True,
+            content_json={"shift_report_id": report_id, **aosr_data},
+            normative_refs=normatives,
+            status=DocumentStatus.DRAFT,
+        )
+        db.add(aosr_doc)
+        await db.flush()
+        await db.refresh(aosr_doc)
+        generated_docs.append({"type": "aosr", "id": aosr_doc.id, "title": aosr_doc.title})
+
+    # ── 3. Акт гидроиспытаний ────────────────────────────────────────────────
+    if phase == ConstructionPhase.HYDRAULIC_TEST:
+        hydraulic_data = {
+            "section_chainage": f"{r.chainage_start or '0+00'} — {r.chainage_end or '—'}",
+            "length_m": r.length_done_m or 0.0,
+            "wall_thickness_mm": 14.0,  # типовое значение — в реальности из ПД
+            "steel_grade": "К60",
+            "test_pressure_mpa": (proj.working_pressure_mpa or 5.4) * 1.5,
+            "tightness_pressure_mpa": proj.working_pressure_mpa or 5.4,
+            "test_date": shift_date_str,
+            "duration_hours": 24,
+            "result": "УДОВЛЕТВОРИТЕЛЬНО",
+        }
+        hyd_path = document_generator.generate_hydraulic_test_act(project_dict, hydraulic_data)
+        hyd_doc = DocModel(
+            project_id=proj.id,
+            document_type=DocumentType.HYDRAULIC_TEST,
+            title=f"Акт гидроиспытаний — ПК {r.chainage_start or '—'} — {shift_date_str}",
+            file_path=hyd_path,
+            file_format="docx",
+            auto_generated=True,
+            content_json={"shift_report_id": report_id, **hydraulic_data},
+            normative_refs=["СП РК 2.04-103-2013* п.10", "ВСН 012-88"],
+            status=DocumentStatus.DRAFT,
+        )
+        db.add(hyd_doc)
+        await db.flush()
+        await db.refresh(hyd_doc)
+        generated_docs.append({"type": "hydraulic_test", "id": hyd_doc.id, "title": hyd_doc.title})
+
+    # ── Финализация рапорта ───────────────────────────────────────────────────
+    r.is_finalized = True
+    r.signed_at = datetime.utcnow()
+    if signed_by:
+        r.signed_by = signed_by
+    r.documents_issued = [
+        {"type": d["type"], "doc_id": d["id"], "title": d["title"]}
+        for d in generated_docs
+    ]
+
+    await db.commit()
+
+    return {
+        "report_id": report_id,
+        "finalized": True,
+        "signed_at": r.signed_at.isoformat(),
+        "generated_documents": generated_docs,
+        "message": f"Рапорт финализирован. Сгенерировано {len(generated_docs)} документ(ов) ИТД.",
+    }
+
+
 @router.get("/{report_id}/download", summary="Скачать рапорт в PDF")
 async def download_shift_report_pdf(
     report_id: str,
