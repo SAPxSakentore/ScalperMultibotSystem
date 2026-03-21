@@ -66,6 +66,7 @@ export const shiftReportsApi = {
     })
   },
   listPdfs: (projectId) => api.get(`/shift-reports/projects/${projectId}/pdfs`),
+  deletePdf: (projectId, uploadId) => api.delete(`/shift-reports/projects/${projectId}/pdfs/${uploadId}`),
 }
 
 export default api
