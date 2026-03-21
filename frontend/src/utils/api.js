@@ -34,6 +34,9 @@ export const documentsApi = {
   generateAosr: (data) => api.post('/documents/generate/aosr', data),
   generateHydraulicTest: (data) => api.post('/documents/generate/hydraulic-test', data),
   generateKs11: (projectId) => api.post(`/documents/generate/ks11?project_id=${projectId}`),
+  generatePpr: (data) => api.post('/documents/generate/ppr', data),
+  generateTechCard: (data) => api.post('/documents/generate/tech-card', data),
+  phases: () => api.get('/documents/phases'),
   download: (docId) => `/api/documents/${docId}/download`,
   checkWithAi: (docId) => api.post(`/documents/${docId}/check-with-ai`),
 }

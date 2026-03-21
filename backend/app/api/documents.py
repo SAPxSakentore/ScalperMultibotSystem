@@ -44,6 +44,19 @@ class GenerateOJRRequest(BaseModel):
     entries: Optional[List[Dict]] = None
 
 
+class GeneratePPRRequest(BaseModel):
+    project_id: str
+    installation_method: Optional[str] = "открытая траншея"
+    notes: Optional[str] = None
+
+
+class GenerateTechCardRequest(BaseModel):
+    project_id: str
+    phase: str                         # значение ConstructionPhase enum
+    card_number: Optional[int] = 1
+    custom_scope: Optional[str] = ""
+
+
 class GenerateHydraulicTestRequest(BaseModel):
     project_id: str
     section_chainage: str
@@ -203,6 +216,84 @@ async def generate_ks11(project_id: str, db: AsyncSession = Depends(get_db)):
     await db.flush()
     await db.refresh(doc)
     return {"document_id": doc.id, "file_path": file_path, "title": doc.title}
+
+
+@router.post("/generate/ppr", response_model=DocumentResponse)
+async def generate_ppr(request: GeneratePPRRequest, db: AsyncSession = Depends(get_db)):
+    """Сгенерировать Проект производства работ (ППР)."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+
+    options = {
+        "installation_method": request.installation_method or "открытая траншея",
+    }
+    file_path = document_generator.generate_ppr(project_dict, options)
+
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.PPR,
+        title=f"ППР — {project.name}",
+        file_path=file_path,
+        file_format="docx",
+        auto_generated=True,
+        content_json=options,
+        normative_refs=["СНиП РК 3.01.01-2008*", "СП РК 1.04.02-2019"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/tech-card", response_model=DocumentResponse)
+async def generate_tech_card(request: GenerateTechCardRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Сгенерировать технологическую карту на конкретный вид работ (фазу строительства).
+    """
+    from app.models.shift_report import ConstructionPhase, PHASE_NAMES_RU
+
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+
+    try:
+        phase = ConstructionPhase(request.phase)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Неизвестная фаза: {request.phase}")
+
+    file_path = document_generator.generate_tech_card(
+        project_dict,
+        phase_value=phase.value,
+        card_number=request.card_number or 1,
+        custom_scope=request.custom_scope or "",
+    )
+
+    from app.models.shift_report import PHASE_NAMES_RU
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.PPR,          # тезкарта хранится в категории ПД/ППР
+        title=f"ТК-{request.card_number:02d} — {PHASE_NAMES_RU[phase]}",
+        file_path=file_path,
+        file_format="docx",
+        auto_generated=True,
+        content_json={"phase": phase.value, "card_number": request.card_number},
+        normative_refs=["СНиП РК 3.01.01-2008*"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.get("/phases")
+async def list_phases():
+    """Список фаз строительства (для выбора в тезкарте)."""
+    from app.models.shift_report import ConstructionPhase, PHASE_NAMES_RU
+    return [
+        {"value": phase.value, "label": PHASE_NAMES_RU[phase]}
+        for phase in ConstructionPhase
+    ]
 
 
 @router.get("/{doc_id}/download")

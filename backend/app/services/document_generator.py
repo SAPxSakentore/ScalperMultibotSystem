@@ -5,7 +5,7 @@
 import os
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
@@ -396,6 +396,372 @@ class DocumentGenerator:
         return self._save_document(doc, "KS11", project_data.get("code", "PROJ"))
 
 
+    # ─── ППР и тезкарты ────────────────────────────────────────────────────────
+
+    def generate_ppr(self, project_data: Dict, ppr_options: Dict = None) -> str:
+        """
+        Проект производства работ (ППР).
+        СНиП РК 3.01.01-2008*, СП РК 1.04.02-2019
+        """
+        from app.models.shift_report import (
+            ConstructionPhase, PHASE_NAMES_RU,
+            PHASE_NORMATIVES, PHASE_TYPICAL_MACHINERY,
+        )
+
+        opts = ppr_options or {}
+        method = opts.get("installation_method", "открытая траншея")
+        doc = Document()
+
+        section = doc.sections[0]
+        section.left_margin  = Cm(2.5)
+        section.right_margin = Cm(1.5)
+        section.top_margin   = Cm(2.0)
+        section.bottom_margin = Cm(2.0)
+
+        # ── Титульный лист ──────────────────────────────────────────────────
+        doc.add_paragraph()
+        doc.add_paragraph()
+        title = doc.add_heading("ПРОЕКТ ПРОИЗВОДСТВА РАБОТ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        sub = doc.add_paragraph(f"по строительству объекта:")
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sub.runs[0].bold = True
+
+        obj_p = doc.add_paragraph(project_data.get("name", ""))
+        obj_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        obj_p.runs[0].bold = True
+        obj_p.runs[0].font.size = Pt(14)
+
+        doc.add_paragraph(f'Шифр проекта: {project_data.get("code", "")}').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph()
+
+        sign_tbl = doc.add_table(rows=4, cols=3)
+        sign_tbl.style = "Table Grid"
+        _set_table_borders(sign_tbl)
+        sign_rows = [
+            ("Заказчик:", project_data.get("customer_name", "___________________")),
+            ("Генеральный подрядчик:", project_data.get("contractor_name", "___________________")),
+            ("Главный инженер:", project_data.get("technical_supervisor", "___________________")),
+            ("Разработан:", datetime.now().strftime("%d.%m.%Y")),
+        ]
+        for i, (label, value) in enumerate(sign_rows):
+            r = sign_tbl.rows[i]
+            r.cells[0].text = label
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = value
+            r.cells[2].text = "_________________ (подпись)"
+
+        doc.add_page_break()
+
+        # ── Общие данные ────────────────────────────────────────────────────
+        doc.add_heading("1. ОБЩИЕ ДАННЫЕ ОБ ОБЪЕКТЕ СТРОИТЕЛЬСТВА", level=1)
+
+        obj_table = doc.add_table(rows=9, cols=2)
+        obj_table.style = "Table Grid"
+        _set_table_borders(obj_table)
+        obj_fields = [
+            ("Наименование объекта:", project_data.get("name", "")),
+            ("Шифр проекта:", project_data.get("code", "")),
+            ("Тип объекта:", project_data.get("project_type", "")),
+            ("Заказчик:", project_data.get("customer_name", "")),
+            ("Генеральный подрядчик:", project_data.get("contractor_name", "")),
+            ("Проектная организация:", project_data.get("designer_name", "")),
+            ("Регион:", project_data.get("region", "")),
+            ("Протяжённость:", f"{project_data.get('total_length_km', '')} км"),
+            ("Диаметр / давление:", f"DN{project_data.get('diameter_mm', '')} / {project_data.get('working_pressure_mpa', '')} МПа"),
+        ]
+        for i, (label, value) in enumerate(obj_fields):
+            r = obj_table.rows[i]
+            r.cells[0].text = label
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = str(value) if value else "—"
+
+        doc.add_paragraph()
+        doc.add_heading("1.1 Метод производства основных работ", level=2)
+        doc.add_paragraph(f"Способ прокладки трубопровода: {method}.")
+        doc.add_paragraph(
+            "Все работы выполняются в соответствии с требованиями СП РК 2.04-103-2013*, "
+            "СНиП РК 3.01.01-2008*, ВСН 012-88 и настоящим ППР."
+        )
+
+        # ── Организация производства ────────────────────────────────────────
+        doc.add_heading("2. ОРГАНИЗАЦИЯ СТРОИТЕЛЬНОГО ПРОИЗВОДСТВА", level=1)
+        doc.add_paragraph(
+            "Строительно-монтажные работы выполняются поточным методом. "
+            "Весь фронт работ разбивается на захватки длиной 2–5 км. "
+            "На каждой захватке одновременно работают специализированные бригады "
+            "по технологическим фазам."
+        )
+
+        doc.add_heading("2.1 Технологическая последовательность работ", level=2)
+        seq_table = doc.add_table(rows=1, cols=3)
+        seq_table.style = "Table Grid"
+        _set_table_borders(seq_table)
+        hdr = seq_table.rows[0]
+        for j, h in enumerate(["№", "Наименование вида работ", "Нормативный документ"]):
+            hdr.cells[j].text = h
+            hdr.cells[j].paragraphs[0].runs[0].bold = True
+
+        for i, phase in enumerate(ConstructionPhase, 1):
+            row = seq_table.add_row()
+            row.cells[0].text = str(i)
+            row.cells[1].text = PHASE_NAMES_RU[phase]
+            row.cells[2].text = ", ".join(PHASE_NORMATIVES.get(phase, []))
+
+        # ── Машины и механизмы ──────────────────────────────────────────────
+        doc.add_heading("3. СОСТАВ МАШИН И МЕХАНИЗМОВ", level=1)
+        doc.add_paragraph(
+            "Состав механизированной колонны принимается в соответствии с "
+            "технологическими картами и объёмами работ."
+        )
+
+        mech_table = doc.add_table(rows=1, cols=3)
+        mech_table.style = "Table Grid"
+        _set_table_borders(mech_table)
+        mhdr = mech_table.rows[0]
+        for j, h in enumerate(["Фаза работ", "Машины и механизмы", "Количество"]):
+            mhdr.cells[j].text = h
+            mhdr.cells[j].paragraphs[0].runs[0].bold = True
+
+        for phase in ConstructionPhase:
+            machines = PHASE_TYPICAL_MACHINERY.get(phase, [])
+            if not machines:
+                continue
+            row = mech_table.add_row()
+            row.cells[0].text = PHASE_NAMES_RU[phase]
+            row.cells[1].text = "\n".join(f"• {m}" for m in machines)
+            row.cells[2].text = "По ПОС"
+
+        # ── Охрана труда ────────────────────────────────────────────────────
+        doc.add_heading("4. ТРЕБОВАНИЯ ОХРАНЫ ТРУДА И ПРОМЫШЛЕННОЙ БЕЗОПАСНОСТИ", level=1)
+        ot_items = [
+            "Все работники должны иметь действующие удостоверения по профессии и ОТ.",
+            "Работы в охранной зоне трубопроводов выполнять только при наличии наряда-допуска.",
+            "При производстве земляных работ на глубине более 1,5 м — обязательное крепление стенок траншеи.",
+            "Сварочные работы — огневые работы, выполняются по наряду-допуску.",
+            "Подъёмно-транспортные работы — только аттестованными стропальщиками и крановщиками.",
+            "Испытание трубопровода — по специальной программе с выставлением охраны в зоне опасности.",
+            "Газоопасные работы при пуске газа — по наряду-допуску, с применением СИЗ органов дыхания.",
+            "Обязательное использование СИЗ: каски, жилеты, спецодежда, спецобувь.",
+        ]
+        for item in ot_items:
+            doc.add_paragraph(item, style="List Bullet")
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            "Нормативные документы: ГОСТ 12.0.004-2015, ГОСТ 12.3.016-87, "
+            "Закон РК «О безопасности и охране труда», Правила ПБ при строительстве МГ."
+        )
+
+        # ── ООС ─────────────────────────────────────────────────────────────
+        doc.add_heading("5. ОХРАНА ОКРУЖАЮЩЕЙ СРЕДЫ", level=1)
+        oos_items = [
+            "Снятие и складирование плодородного слоя почвы с последующей рекультивацией.",
+            "Запрет на слив ГСМ и сточных вод вне специально отведённых мест.",
+            "Трасса трубопровода после укладки засыпается с восстановлением рельефа.",
+            "Рекультивация нарушенных угодий в соответствии с проектом.",
+            "Переходы через водные преграды — по специальным методам (ГНБ/НБ).",
+        ]
+        for item in oos_items:
+            doc.add_paragraph(item, style="List Bullet")
+
+        # ── Перечень тезкарт ─────────────────────────────────────────────────
+        doc.add_heading("6. ПЕРЕЧЕНЬ ТЕХНОЛОГИЧЕСКИХ КАРТ (ПРИЛОЖЕНИЯ)", level=1)
+        tc_table = doc.add_table(rows=1, cols=2)
+        tc_table.style = "Table Grid"
+        _set_table_borders(tc_table)
+        tc_hdr = tc_table.rows[0]
+        tc_hdr.cells[0].text = "Приложение"
+        tc_hdr.cells[0].paragraphs[0].runs[0].bold = True
+        tc_hdr.cells[1].text = "Наименование технологической карты"
+        tc_hdr.cells[1].paragraphs[0].runs[0].bold = True
+
+        for i, phase in enumerate(ConstructionPhase, 1):
+            row = tc_table.add_row()
+            row.cells[0].text = f"ТК-{i:02d}"
+            row.cells[1].text = PHASE_NAMES_RU[phase]
+
+        return self._save_document(doc, "PPR", project_data.get("code", "PROJ"))
+
+    def generate_tech_card(
+        self,
+        project_data: Dict,
+        phase_value: str,
+        card_number: int = 1,
+        custom_scope: str = "",
+    ) -> str:
+        """
+        Технологическая карта на конкретный вид работ.
+        СНиП РК 3.01.01-2008*
+        """
+        from app.models.shift_report import (
+            ConstructionPhase, PHASE_NAMES_RU,
+            PHASE_NORMATIVES, PHASE_TYPICAL_MACHINERY,
+        )
+
+        try:
+            phase = ConstructionPhase(phase_value)
+        except ValueError:
+            phase = ConstructionPhase.TRENCH_EXCAVATION
+
+        phase_name = PHASE_NAMES_RU[phase]
+        normatives = PHASE_NORMATIVES.get(phase, [])
+        machinery  = PHASE_TYPICAL_MACHINERY.get(phase, [])
+
+        # Загружаем справочные данные
+        _ensure_data()
+
+        # Типовые операции по фазе
+        PHASE_OPERATIONS = _TECH_CARD_OPERATIONS.get(phase, [
+            ("Подготовительные работы", "Проверка технического состояния машин и механизмов, инструктаж персонала"),
+            ("Основные работы", f"Производство работ по фазе: {phase_name}"),
+            ("Контроль качества", "Операционный и визуальный контроль в соответствии с НТД"),
+            ("Сдача-приёмка", "Оформление актов и разрешение на последующие работы"),
+        ])
+
+        doc = Document()
+        section = doc.sections[0]
+        section.left_margin  = Cm(2.5)
+        section.right_margin = Cm(1.5)
+
+        # ── Заголовок ───────────────────────────────────────────────────────
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p.add_run(f"Приложение ТК-{card_number:02d} к ППР").italic = True
+
+        title = doc.add_heading("ТЕХНОЛОГИЧЕСКАЯ КАРТА", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        sub = doc.add_paragraph(phase_name.upper())
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sub.runs[0].bold = True
+        sub.runs[0].font.size = Pt(13)
+
+        doc.add_paragraph(
+            f"Объект: {project_data.get('name', '')}    Шифр: {project_data.get('code', '')}"
+        ).alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+
+        # ── 1. Назначение ────────────────────────────────────────────────────
+        doc.add_heading("1. НАЗНАЧЕНИЕ И ОБЛАСТЬ ПРИМЕНЕНИЯ", level=1)
+        doc.add_paragraph(
+            f"Настоящая технологическая карта предназначена для выполнения работ: "
+            f"«{phase_name}» при строительстве объекта «{project_data.get('name', '')}»."
+        )
+        if custom_scope:
+            doc.add_paragraph(f"Особые условия: {custom_scope}")
+        doc.add_paragraph(
+            f"Объект: трубопровод DN{project_data.get('diameter_mm', '—')} мм, "
+            f"Р={project_data.get('working_pressure_mpa', '—')} МПа, "
+            f"L={project_data.get('total_length_km', '—')} км."
+        )
+
+        # ── 2. Предшествующие работы ─────────────────────────────────────────
+        doc.add_heading("2. ТРЕБОВАНИЯ К ПРЕДШЕСТВУЮЩИМ РАБОТАМ", level=1)
+        prev_work = _PRECEDING_WORKS.get(phase, "Предшествующие работы должны быть выполнены в полном объёме и приняты по актам.")
+        doc.add_paragraph(prev_work)
+
+        # ── 3. Персонал ──────────────────────────────────────────────────────
+        doc.add_heading("3. СОСТАВ ИСПОЛНИТЕЛЕЙ", level=1)
+        staff_table = doc.add_table(rows=1, cols=3)
+        staff_table.style = "Table Grid"
+        _set_table_borders(staff_table)
+        sh = staff_table.rows[0]
+        for j, h in enumerate(["Должность / профессия", "Разряд / категория", "Количество, чел."]):
+            sh.cells[j].text = h
+            sh.cells[j].paragraphs[0].runs[0].bold = True
+        for pos, grade, qty in _STAFF.get(phase, [("Рабочие", "4–5", "По ПОС"), ("ИТР", "—", "1")]):
+            r = staff_table.add_row()
+            r.cells[0].text = pos
+            r.cells[1].text = grade
+            r.cells[2].text = qty
+
+        # ── 4. Машины и механизмы ────────────────────────────────────────────
+        doc.add_heading("4. МАШИНЫ, МЕХАНИЗМЫ И ИНСТРУМЕНТ", level=1)
+        if machinery:
+            mech_table = doc.add_table(rows=1, cols=3)
+            mech_table.style = "Table Grid"
+            _set_table_borders(mech_table)
+            mhdr = mech_table.rows[0]
+            for j, h in enumerate(["Наименование", "Марка / тип", "Количество"]):
+                mhdr.cells[j].text = h
+                mhdr.cells[j].paragraphs[0].runs[0].bold = True
+            for m in machinery:
+                row = mech_table.add_row()
+                row.cells[0].text = m
+                row.cells[1].text = "По ПОС / факт."
+                row.cells[2].text = "1"
+        else:
+            doc.add_paragraph("Ручной инструмент и измерительные приборы по перечню ПОС.")
+
+        # ── 5. Технологическая последовательность ────────────────────────────
+        doc.add_heading("5. ТЕХНОЛОГИЧЕСКАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ОПЕРАЦИЙ", level=1)
+        ops_table = doc.add_table(rows=1, cols=3)
+        ops_table.style = "Table Grid"
+        _set_table_borders(ops_table)
+        oh = ops_table.rows[0]
+        for j, h in enumerate(["№ п/п", "Наименование операции", "Указания по выполнению"]):
+            oh.cells[j].text = h
+            oh.cells[j].paragraphs[0].runs[0].bold = True
+        for i, (op_name, op_desc) in enumerate(PHASE_OPERATIONS, 1):
+            row = ops_table.add_row()
+            row.cells[0].text = str(i)
+            row.cells[1].text = op_name
+            row.cells[2].text = op_desc
+
+        # ── 6. Контроль качества ─────────────────────────────────────────────
+        doc.add_heading("6. КОНТРОЛЬ КАЧЕСТВА", level=1)
+        qc_table = doc.add_table(rows=1, cols=4)
+        qc_table.style = "Table Grid"
+        _set_table_borders(qc_table)
+        qhdr = qc_table.rows[0]
+        for j, h in enumerate(["Вид контроля", "Контролируемый параметр", "Метод", "Периодичность"]):
+            qhdr.cells[j].text = h
+            qhdr.cells[j].paragraphs[0].runs[0].bold = True
+        for row_data in _QC_CHECKS.get(phase, [
+            ("Входной",      "Соответствие материалов проекту",       "Визуальный, документальный",  "При поступлении"),
+            ("Операционный", "Соблюдение технологии производства работ", "Визуальный, инструментальный", "Непрерывно"),
+            ("Приёмочный",   "Качество выполненных работ",              "Визуальный, инструментальный", "По завершении"),
+        ]):
+            row = qc_table.add_row()
+            for j, val in enumerate(row_data):
+                row.cells[j].text = val
+
+        # ── 7. Охрана труда ──────────────────────────────────────────────────
+        doc.add_heading("7. ТРЕБОВАНИЯ ОХРАНЫ ТРУДА И ПБ", level=1)
+        for item in _OT_REQUIREMENTS.get(phase, [
+            "Инструктаж по ОТ перед началом работ.",
+            "Применение СИЗ: каска, жилет, перчатки, спецодежда.",
+            "Работы выполнять только в светлое время суток (при отсутствии освещения).",
+        ]):
+            doc.add_paragraph(item, style="List Bullet")
+
+        # ── 8. Нормативные документы ─────────────────────────────────────────
+        doc.add_heading("8. НОРМАТИВНЫЕ ДОКУМЕНТЫ", level=1)
+        for norm in normatives:
+            doc.add_paragraph(norm, style="List Bullet")
+        doc.add_paragraph("СНиП РК 3.01.01-2008* — Организация строительного производства", style="List Bullet")
+        doc.add_paragraph("СП РК 1.04.02-2019 — Исполнительная документация", style="List Bullet")
+        doc.add_paragraph("ГОСТ 12.0.004-2015 — Инструктажи по ОТ", style="List Bullet")
+
+        # ── Подпись ───────────────────────────────────────────────────────────
+        doc.add_paragraph()
+        sign2 = doc.add_table(rows=2, cols=3)
+        sign2.style = "Table Grid"
+        _set_table_borders(sign2)
+        sign2.rows[0].cells[0].text = "Разработал:"
+        sign2.rows[0].cells[1].text = project_data.get("technical_supervisor", "___________________")
+        sign2.rows[0].cells[2].text = "_________________ (подпись)"
+        sign2.rows[1].cells[0].text = "Утвердил (ГИП):"
+        sign2.rows[1].cells[1].text = "___________________"
+        sign2.rows[1].cells[2].text = "_________________ (подпись)"
+
+        phase_slug = phase.value.replace("_", "-")
+        return self._save_document(doc, f"TK_{phase_slug}", project_data.get("code", "PROJ"))
+
+
 def _month_ru(month: int) -> str:
     months = {
         1: "января", 2: "февраля", 3: "марта", 4: "апреля",
@@ -405,5 +771,162 @@ def _month_ru(month: int) -> str:
     return months.get(month, "")
 
 
+# ─── Справочные данные технологических карт (операции / персонал / QC / ОТ) ──
+
+def _lazy_phase_data():
+    """Вернуть словари с данными для тезкарт (импорт внутри, чтобы избежать циклов)."""
+    from app.models.shift_report import ConstructionPhase as P
+
+    ops: dict = {
+        P.GEODESY_SURVEY: [
+            ("Получение разрешительной документации", "Получить разрешение на геодезическую деятельность и ознакомиться с топосъёмкой"),
+            ("Рекогносцировка местности", "Обследование трассы, уточнение положения оси в натуре"),
+            ("Разбивка оси трубопровода", "Установка вех / кольев по оси через 50 м, разбивка горизонтальных кривых"),
+            ("Разбивка зоны отвода", "Обозначение границ полосы отвода"),
+            ("Оформление полевого журнала", "Занесение координат в геодезический журнал, сдача бригадиру"),
+        ],
+        P.TRENCH_EXCAVATION: [
+            ("Разметка траншеи", "Установить шнур / обозначить границы траншеи по оси разбивки"),
+            ("Снятие растительного слоя", "Бульдозер снимает ПСП в отвал"),
+            ("Разработка грунта экскаватором", "Разработка с выкидкой грунта в одностороннее лежачее боковое отвало не ближе 0,5 м от бровки"),
+            ("Зачистка дна траншеи", "Ручная зачистка 10–15 см до проектной отметки"),
+            ("Операционный контроль", "Нивелирование дна, проверка уклонов, размеров поперечного профиля"),
+        ],
+        P.PIPE_WELDING: [
+            ("Подготовка торцов труб", "Зачистка кромок, удаление заводской фаски до проектной, замер калибром"),
+            ("Входной контроль труб", "Проверка сертификатов, визуальный осмотр, замер геометрии"),
+            ("Сборка стыка", "Установка труб в центраторе, проверка смещения кромок (не более 1 мм)"),
+            ("Сварка корневого прохода", "Ручная дуговая сварка / автомат (по WPS)"),
+            ("Сварка заполняющих проходов", "2–3 прохода согласно WPS"),
+            ("Сварка облицовочного прохода", "Финишный шов, зачистка шлака"),
+            ("Контроль сварного шва", "ВИК + УЗК/РГК в соответствии с ВСН 012-88"),
+        ],
+        P.PIPE_INSULATION: [
+            ("Подготовка поверхности трубы", "Дробеструйная / пескоструйная очистка до Sa 2½"),
+            ("Нанесение праймера", "Нанесение адгезионного слоя валиком / безвоздушным распылением"),
+            ("Нанесение изоляционного покрытия", "Изоляционная машина — намотка ленты в 2 слоя / нанесение экструзионного PE"),
+            ("Контроль покрытия", "Измерение толщины плёнки, диэлектрический контроль (искровой дефектоскоп), адгезия"),
+        ],
+        P.PIPE_LAYING: [
+            ("Проверка готовности траншеи", "Нивелирование дна, осмотр на отсутствие посторонних предметов"),
+            ("Устройство мягкой постели", "Подсыпка мягким грунтом 10–15 см"),
+            ("Строповка плети", "Захват трубоукладчиками не ближе 3 м от стыков"),
+            ("Опускание трубопровода", "Одновременная работа 3–5 трубоукладчиков, контроль прогиба плети"),
+            ("Проверка проектного положения", "Нивелирование верха трубы, осмотр сохранности изоляции"),
+        ],
+        P.HYDRAULIC_TEST: [
+            ("Подготовка к испытанию", "Установка заглушек, манометров, соединение с опрессовочным агрегатом"),
+            ("Заполнение водой", "Медленное заполнение снизу-вверх с выпуском воздуха"),
+            ("Подъём давления до испытательного", "Плавный подъём до Рисп, скорость не более 0,1 МПа/мин"),
+            ("Выдержка под давлением (прочность)", "Выдержка согласно проекту (обычно 24 ч)"),
+            ("Снижение и выдержка на герметичность", "Снижение до Ргерм и повторная выдержка"),
+            ("Осмотр и оценка результата", "Обход трассы, фиксация падения давления / утечек"),
+            ("Сброс давления и откачка воды", "Сброс давления, слив и утилизация воды"),
+        ],
+        P.TRENCH_BACKFILL: [
+            ("Подготовка", "Проверка сохранности изоляции трубопровода, акт на укладку"),
+            ("Присыпка мягким грунтом", "Засыпка слоем 20–30 см выше верха трубы мягким грунтом вручную"),
+            ("Подбивка пазух", "Послойное уплотнение грунта в пазухах"),
+            ("Основная засыпка", "Бульдозер: послойная отсыпка по 30 см с уплотнением"),
+            ("Устройство нагорного вала / рекультивация", "Формирование бровки с учётом осадки грунта"),
+            ("Операционный контроль", "Контроль плотности грунта (ГОСТ 28514)"),
+        ],
+    }
+
+    preceding: dict = {
+        P.CLEARING: "Геодезическая разбивка оси трубопровода выполнена и принята по акту.",
+        P.TOPSOIL_REMOVAL: "Расчистка трассы от кустарника и деревьев выполнена и принята.",
+        P.TRENCH_EXCAVATION: "Снятие ПСП выполнено. Геодезическая разбивка бровки траншеи произведена.",
+        P.TRENCH_PREPARATION: "Траншея разработана до проектной отметки, принята по акту.",
+        P.PIPE_WELDING: "Трубы доставлены на трассу, прошли входной контроль. Сварщики аттестованы.",
+        P.PIPE_INSULATION: "Сварные стыки приняты по ВИК/УЗК, оформлены акты.",
+        P.PIPE_LAYING: "Траншея готова, постель устроена. Изоляция проверена искровым дефектоскопом.",
+        P.TRENCH_BACKFILL: "Трубопровод уложен и принят по акту. Изоляция проверена.",
+        P.HYDRAULIC_TEST: "Трубопровод уложен, засыпан, оформлены АОСР на все виды скрытых работ.",
+        P.PURGE_DRY: "Гидроиспытание успешно, акт оформлен. Вода откачана.",
+        P.ECP_INSTALLATION: "Трубопровод уложен, засыпан. ПСП рекультивирован.",
+        P.COMMISSIONING: "Все виды испытаний выполнены. ИТД укомплектована. Акт гидроиспытаний положительный.",
+    }
+
+    staff: dict = {
+        P.GEODESY_SURVEY: [("Геодезист", "Высшее/среднее техн.", "1"), ("Рабочий-реечник", "2–3", "2")],
+        P.TRENCH_EXCAVATION: [("Машинист экскаватора", "5–6", "1"), ("Машинист бульдозера", "5", "1"), ("Рабочий-землекоп", "3", "2")],
+        P.PIPE_WELDING: [("Сварщик аттестованный", "5–6 НАКС", "4–6"), ("Дефектоскопист", "II–III уровень", "1"), ("Трубоукладчик", "5–6", "2")],
+        P.PIPE_INSULATION: [("Изолировщик", "4–5", "3"), ("Трубоукладчик", "5", "1"), ("Лаборант", "3–4", "1")],
+        P.PIPE_LAYING: [("Машинист трубоукладчика", "5–6", "4"), ("Стропальщик", "4–5", "4"), ("Геодезист", "—", "1")],
+        P.HYDRAULIC_TEST: [("Машинист насосной станции", "4–5", "2"), ("Слесарь трубопроводчик", "4–5", "2"), ("ИТР-ответственный", "—", "1")],
+    }
+
+    qc: dict = {
+        P.TRENCH_EXCAVATION: [
+            ("Входной",      "Отметка дна траншеи",              "Нивелирование",              "Каждые 50 м"),
+            ("Операционный", "Ширина и откосы траншеи",           "Инструментально",            "Каждые 50 м"),
+            ("Приёмочный",   "Соответствие проекту (профиль)",    "Нивелирование, АОСР",        "По завершении"),
+        ],
+        P.PIPE_WELDING: [
+            ("Входной",      "Сертификаты труб и расходных материалов", "Документальный",       "При поступлении"),
+            ("Операционный", "Подготовка кромок, сборка, режимы сварки", "Визуальный, ВИК",    "Каждый стык"),
+            ("Приёмочный",   "100% ВИК + выборочно УЗК/РГК",     "ВИК, УЗК, РГК",             "ВСН 012-88"),
+        ],
+        P.HYDRAULIC_TEST: [
+            ("Операционный", "Давление и время выдержки",         "Манометр кл. 0.25",          "Непрерывно"),
+            ("Приёмочный",   "Результат испытания",               "Сравнение нач./конечного P",  "По завершении"),
+        ],
+    }
+
+    ot: dict = {
+        P.TRENCH_EXCAVATION: [
+            "Работы в траншее глубиной более 1,5 м — только с креплением стенок.",
+            "Бровка траншеи должна быть ограждена на расстоянии 1 м.",
+            "Запрещено нахождение людей в зоне работы ковша экскаватора (5 м).",
+            "Сигнальный жилет обязателен для всех работников.",
+        ],
+        P.PIPE_WELDING: [
+            "Сварочные работы — огневые работы, выполнять по наряду-допуску.",
+            "Сварщик обязан иметь действующее удостоверение НАКС.",
+            "Защитный щиток/маска, спецодежда из огнестойкого материала.",
+            "В охранной зоне действующих трубопроводов — разрешение в установленном порядке.",
+        ],
+        P.HYDRAULIC_TEST: [
+            "Опасная зона по обе стороны испытываемого участка ограждается на 25 м.",
+            "Запрещено находиться в зоне опасности при подъёме давления.",
+            "Наблюдение за манометром только дистанционно / через защитное стекло.",
+            "Сброс давления — плавный, через специальные вентили.",
+        ],
+        P.GAS_START: [
+            "Газоопасные работы — по наряду-допуску, бригада не менее 2 чел.",
+            "Обязательное применение газоанализаторов и СИЗ органов дыхания.",
+            "Запрет на использование открытого огня в радиусе 100 м.",
+            "Связь с диспетчером каждые 30 минут.",
+        ],
+    }
+
+    return ops, preceding, staff, qc, ot
+
+
+# Кэш данных (вычисляется при первом обращении)
+_TECH_CARD_OPERATIONS: dict = {}
+_PRECEDING_WORKS: dict = {}
+_STAFF: dict = {}
+_QC_CHECKS: dict = {}
+_OT_REQUIREMENTS: dict = {}
+
+
+def _init_tech_card_data():
+    global _TECH_CARD_OPERATIONS, _PRECEDING_WORKS, _STAFF, _QC_CHECKS, _OT_REQUIREMENTS
+    if _TECH_CARD_OPERATIONS:
+        return
+    _TECH_CARD_OPERATIONS, _PRECEDING_WORKS, _STAFF, _QC_CHECKS, _OT_REQUIREMENTS = _lazy_phase_data()
+
+
+# Вызывается при первом использовании в generate_tech_card
+import atexit as _atexit  # noqa
+
+
+def _ensure_data():
+    _init_tech_card_data()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Синглтон генератора
 document_generator = DocumentGenerator()

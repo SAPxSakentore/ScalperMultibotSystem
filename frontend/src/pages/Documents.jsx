@@ -208,6 +208,120 @@ function ModalHydraulicTest({ projectId, onClose, onSuccess }) {
   )
 }
 
+function ModalPpr({ projectId, onClose, onSuccess }) {
+  const [method, setMethod] = useState('открытая траншея')
+  const methods = ['открытая траншея', 'ГНБ (горизонтально-направленное бурение)', 'надземная прокладка', 'микротоннелирование']
+  const mutation = useMutation({
+    mutationFn: () => documentsApi.generatePpr({ project_id: projectId, installation_method: method }),
+    onSuccess: (res) => { onSuccess(res.data); onClose() },
+  })
+  return (
+    <ModalShell title="Сформировать ППР" onClose={onClose}>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-slate-500">Метод прокладки трубопровода</span>
+        <select
+          value={method}
+          onChange={e => setMethod(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          {methods.map(m => <option key={m}>{m}</option>)}
+        </select>
+      </label>
+      <p className="text-xs text-slate-400 mt-2">
+        Будет сформирован полный ППР: последовательность фаз, состав механизмов, ОТ и ПБ,
+        ООС, перечень технологических карт (ТК-01…ТК-20) — ~40 стр. DOCX.
+      </p>
+      <div className="mt-4 flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Отмена</button>
+        <button
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending}
+          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+        >
+          {mutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          Сформировать ППР
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+function ModalTechCard({ projectId, onClose, onSuccess }) {
+  const [phase, setPhase] = useState('')
+  const [cardNo, setCardNo] = useState('1')
+  const [scope, setScope] = useState('')
+
+  const { data: phases = [] } = useQuery({
+    queryKey: ['doc-phases'],
+    queryFn: () => documentsApi.phases().then(r => r.data),
+  })
+
+  const mutation = useMutation({
+    mutationFn: () => documentsApi.generateTechCard({
+      project_id: projectId,
+      phase,
+      card_number: parseInt(cardNo) || 1,
+      custom_scope: scope,
+    }),
+    onSuccess: (res) => { onSuccess(res.data); onClose() },
+  })
+
+  return (
+    <ModalShell title="Технологическая карта (тезкарта)" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <label className="flex flex-col gap-1">
+          <span className="text-slate-500">Вид работ / фаза строительства *</span>
+          <select
+            value={phase}
+            onChange={e => setPhase(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          >
+            <option value="">— выберите —</option>
+            {phases.map(p => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+        </label>
+        <div className="flex gap-3">
+          <label className="flex flex-col gap-1 w-24">
+            <span className="text-slate-500">Номер ТК</span>
+            <input
+              type="number" min="1" max="99"
+              value={cardNo}
+              onChange={e => setCardNo(e.target.value)}
+              className="border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-slate-500">Особые условия (необязательно)</span>
+            <input
+              value={scope}
+              onChange={e => setScope(e.target.value)}
+              placeholder="напр. обводнённый грунт, скала"
+              className="border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+          </label>
+        </div>
+        <p className="text-xs text-slate-400">
+          Карта включает: персонал, машины и механизмы, последовательность операций,
+          контроль качества (входной / операционный / приёмочный), требования ОТ и ПБ, НТД.
+        </p>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Отмена</button>
+        <button
+          onClick={() => mutation.mutate()}
+          disabled={!phase || mutation.isPending}
+          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+        >
+          {mutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          Сформировать тезкарту
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
 function ModalShell({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -343,7 +457,7 @@ function DocGroup({ group, docs }) {
 
 export default function Documents() {
   const [projectId, setProjectId] = useState('')
-  const [modal, setModal] = useState(null) // 'aosr' | 'hydraulic'
+  const [modal, setModal] = useState(null) // 'aosr' | 'hydraulic' | 'ppr' | 'techcard'
   const queryClient = useQueryClient()
 
   const { data: projects = [] } = useQuery({
@@ -362,6 +476,12 @@ export default function Documents() {
   // Генерация ОЖР
   const ojrMut = useMutation({
     mutationFn: () => documentsApi.generateOjr({ project_id: projectId }),
+    onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
+  })
+
+  // Генерация ППР
+  const pprMut = useMutation({
+    mutationFn: (opts) => documentsApi.generatePpr({ project_id: projectId, ...opts }),
     onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
   })
 
@@ -469,6 +589,17 @@ export default function Documents() {
                 onClick={() => ks11Mut.mutate()}
                 title="Акт приёмки построенного объекта"
               />
+              <div className="w-px bg-slate-200 self-stretch mx-1" />
+              <GenButton
+                label="ППР"
+                onClick={() => setModal('ppr')}
+                title="Проект производства работ (все 20 фаз)"
+              />
+              <GenButton
+                label="Тезкарта"
+                onClick={() => setModal('techcard')}
+                title="Технологическая карта на отдельный вид работ"
+              />
               <button
                 onClick={() => refetch()}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
@@ -501,6 +632,20 @@ export default function Documents() {
       )}
 
       {/* Модалки */}
+      {modal === 'ppr' && (
+        <ModalPpr
+          projectId={projectId}
+          onClose={() => setModal(null)}
+          onSuccess={handleModalSuccess}
+        />
+      )}
+      {modal === 'techcard' && (
+        <ModalTechCard
+          projectId={projectId}
+          onClose={() => setModal(null)}
+          onSuccess={handleModalSuccess}
+        />
+      )}
       {modal === 'aosr' && (
         <ModalAosr
           projectId={projectId}
