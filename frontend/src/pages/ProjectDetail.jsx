@@ -5,9 +5,46 @@ import { projectsApi, documentsApi, shiftReportsApi } from '../utils/api'
 import {
   FileText, Loader2, CheckSquare, BarChart2, AlertTriangle,
   ClipboardList, Upload, Trash2, BookOpen, ChevronDown, ChevronUp,
-  FileCheck, X, CheckCircle2,
+  FileCheck, X, CheckCircle2, TrendingUp,
 } from 'lucide-react'
 import TraceProgress from '../components/TraceProgress'
+
+function ProgressBadge({ projectId }) {
+  const { data } = useQuery({
+    queryKey: ['progress', projectId],
+    queryFn: () => projectsApi.getProgress(projectId).then(r => r.data),
+    enabled: !!projectId,
+  })
+  if (!data) return null
+  const pct = data.overall_pct
+  const done = data.overall_done_km
+  const activePhases = data.phases.filter(p => p.has_data).length
+  return (
+    <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+      <div className="flex items-center justify-between text-sm">
+        <span className="flex items-center gap-1.5 text-slate-600">
+          <TrendingUp size={14} className="text-blue-500" />
+          Прогресс строительства
+        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-slate-500">{done} км</span>
+          <span className={`font-bold text-base ${pct >= 100 ? 'text-green-700' : pct >= 60 ? 'text-blue-700' : pct >= 20 ? 'text-amber-700' : 'text-orange-600'}`}>
+            {pct !== null ? `${pct}%` : '—'}
+          </span>
+          <span className="text-xs text-slate-400">{activePhases} фаз активны</span>
+        </div>
+      </div>
+      {pct !== null && (
+        <div className="h-2.5 bg-slate-200 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${pct >= 100 ? 'bg-green-500' : pct >= 60 ? 'bg-blue-500' : pct >= 20 ? 'bg-amber-400' : 'bg-orange-400'}`}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 const TAB_LABELS = ['Обзор', 'ИТД', 'Прогресс', 'Документы', 'ПД/ППР']
 
@@ -82,6 +119,7 @@ export default function ProjectDetail() {
             {project.contractor_name && (
               <div className="text-sm text-slate-500">Подрядчик: {project.contractor_name}</div>
             )}
+            <ProgressBadge projectId={id} />
           </div>
           <Link
             to={`/projects/${id}/shift-reports`}

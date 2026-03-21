@@ -34,11 +34,15 @@ export const documentsApi = {
   generateAosr: (data) => api.post('/documents/generate/aosr', data),
   generateHydraulicTest: (data) => api.post('/documents/generate/hydraulic-test', data),
   generateKs11: (projectId) => api.post(`/documents/generate/ks11?project_id=${projectId}`),
+  generateWeldingJournal: (data) => api.post('/documents/generate/welding-journal', data),
+  generateKs2: (data) => api.post('/documents/generate/ks2', data),
+  generatePurgeAct: (data) => api.post('/documents/generate/purge-act', data),
   generatePpr: (data) => api.post('/documents/generate/ppr', data),
   generateTechCard: (data) => api.post('/documents/generate/tech-card', data),
   generateTechCardsBundle: (data) => api.post('/documents/generate/tech-cards-bundle', data, { responseType: 'blob' }),
   phases: () => api.get('/documents/phases'),
   download: (docId) => `/api/documents/${docId}/download`,
+  updateStatus: (docId, data) => api.patch(`/documents/${docId}/status`, data),
   checkWithAi: (docId) => api.post(`/documents/${docId}/check-with-ai`),
 }
 

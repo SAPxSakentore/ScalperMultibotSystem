@@ -395,6 +395,234 @@ class DocumentGenerator:
 
         return self._save_document(doc, "KS11", project_data.get("code", "PROJ"))
 
+    def generate_welding_journal(self, project_data: Dict, entries: List = None) -> str:
+        """
+        Журнал производства сварочных работ.
+        ВСН 012-88, РД РК 3.01.001-2019
+        """
+        doc = Document()
+        section = doc.sections[0]
+        section.page_width  = Cm(29.7)
+        section.page_height = Cm(21.0)
+        section.left_margin = Cm(2.0)
+        section.right_margin = Cm(1.0)
+
+        title = doc.add_heading("ЖУРНАЛ ПРОИЗВОДСТВА СВАРОЧНЫХ РАБОТ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph("(ВСН 012-88 ч.I, РД РК 3.01.001-2019)").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph()
+
+        info_tbl = doc.add_table(rows=6, cols=2)
+        info_tbl.style = "Table Grid"
+        _set_table_borders(info_tbl)
+        for i, (lbl, val) in enumerate([
+            ("Наименование объекта:", project_data.get("name", "")),
+            ("Шифр проекта:", project_data.get("code", "")),
+            ("Заказчик:", project_data.get("customer_name", "")),
+            ("Подрядчик:", project_data.get("contractor_name", "")),
+            ("Диаметр / Марка стали:", f"DN{project_data.get('diameter_mm', '—')} мм"),
+            ("Нормативный документ:", "ВСН 012-88, РД РК 3.01.001-2019"),
+        ]):
+            r = info_tbl.rows[i]
+            r.cells[0].text = lbl
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = str(val) if val else "—"
+
+        doc.add_paragraph()
+
+        # Основная таблица стыков
+        tbl = doc.add_table(rows=1, cols=11)
+        tbl.style = "Table Grid"
+        _set_table_borders(tbl)
+        headers = [
+            "№ п/п", "Дата", "№ стыка", "ПК (пикет)", "Ø трубы, мм",
+            "Толщ. стенки, мм", "Клеймо сварщика", "Метод сварки",
+            "Вид НК", "Результат НК", "Примечание",
+        ]
+        hrow = tbl.rows[0]
+        for j, h in enumerate(headers):
+            hrow.cells[j].text = h
+            hrow.cells[j].paragraphs[0].runs[0].bold = True
+            hrow.cells[j].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        for idx, e in enumerate(entries or [], 1):
+            row = tbl.add_row()
+            row.cells[0].text  = str(idx)
+            row.cells[1].text  = e.get("date", "")
+            row.cells[2].text  = e.get("joint_number", "")
+            row.cells[3].text  = e.get("chainage", "")
+            row.cells[4].text  = str(project_data.get("diameter_mm", ""))
+            row.cells[5].text  = e.get("wall_thickness_mm", "")
+            row.cells[6].text  = e.get("welder_stamp", "")
+            row.cells[7].text  = e.get("weld_method", "РАД")
+            row.cells[8].text  = e.get("ndt_type", "ВИК+УЗК")
+            row.cells[9].text  = e.get("ndt_result", "Удовл.")
+            row.cells[10].text = e.get("note", "")
+
+        if not entries:
+            tbl.add_row()
+
+        doc.add_paragraph()
+        doc.add_paragraph("Производитель работ: _________________ / _________________ / «___» ________ ___ г.")
+
+        return self._save_document(doc, "WeldingJournal", project_data.get("code", "PROJ"))
+
+    def generate_ks2(self, project_data: Dict, ks2_data: Dict) -> str:
+        """
+        Акт о приёмке выполненных работ (КС-2).
+        Форма утверждена приказом МФ РК.
+        """
+        doc = Document()
+
+        title = doc.add_heading("АКТ О ПРИЁМКЕ ВЫПОЛНЕННЫХ РАБОТ", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sub = doc.add_paragraph("(Форма КС-2)")
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"г. {project_data.get('region', '')}    «___» _________ {datetime.now().year} г."
+        )
+        doc.add_paragraph()
+
+        # Реквизиты
+        req_tbl = doc.add_table(rows=6, cols=2)
+        req_tbl.style = "Table Grid"
+        _set_table_borders(req_tbl)
+        for i, (lbl, val) in enumerate([
+            ("Заказчик:", project_data.get("customer_name", "")),
+            ("Подрядчик:", project_data.get("contractor_name", "")),
+            ("Объект:", project_data.get("name", "")),
+            ("Шифр проекта:", project_data.get("code", "")),
+            ("Отчётный период:", ks2_data.get("period", "________________")),
+            ("Номер договора подряда:", ks2_data.get("contract_number", "_______________")),
+        ]):
+            r = req_tbl.rows[i]
+            r.cells[0].text = lbl
+            r.cells[0].paragraphs[0].runs[0].bold = True
+            r.cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_heading("Перечень выполненных работ:", level=2)
+
+        works = ks2_data.get("works", [])
+        work_tbl = doc.add_table(rows=1, cols=7)
+        work_tbl.style = "Table Grid"
+        _set_table_borders(work_tbl)
+        whdr = work_tbl.rows[0]
+        for j, h in enumerate(["№", "Наименование работ", "Ед. изм.", "Кол-во по смете", "Выполнено", "Цена за ед., тг.", "Сумма, тг."]):
+            whdr.cells[j].text = h
+            whdr.cells[j].paragraphs[0].runs[0].bold = True
+            whdr.cells[j].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        total = 0.0
+        for idx, w in enumerate(works, 1):
+            qty    = float(w.get("quantity", 0) or 0)
+            price  = float(w.get("unit_price", 0) or 0)
+            amount = qty * price
+            total += amount
+            row = work_tbl.add_row()
+            row.cells[0].text = str(idx)
+            row.cells[1].text = w.get("name", "")
+            row.cells[2].text = w.get("unit", "")
+            row.cells[3].text = str(w.get("planned_qty", ""))
+            row.cells[4].text = str(qty)
+            row.cells[5].text = f"{price:,.2f}"
+            row.cells[6].text = f"{amount:,.2f}"
+
+        if not works:
+            work_tbl.add_row()
+            total_row = work_tbl.add_row()
+        else:
+            total_row = work_tbl.add_row()
+
+        total_row.cells[5].text = "ИТОГО:"
+        total_row.cells[5].paragraphs[0].runs[0].bold = True
+        total_row.cells[6].text = f"{total:,.2f} тг."
+        total_row.cells[6].paragraphs[0].runs[0].bold = True
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"Итого по акту: {ks2_data.get('total_amount', _number_to_words(total))} тенге."
+        ).runs[0].bold = True
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            "Работы выполнены в соответствии с проектной документацией, "
+            "требованиями нормативно-технических документов РК и условиями договора."
+        )
+
+        doc.add_paragraph()
+        sig_tbl = doc.add_table(rows=2, cols=3)
+        sig_tbl.style = "Table Grid"
+        _set_table_borders(sig_tbl)
+        for i, (role, name_key) in enumerate([
+            ("Сдал (Подрядчик):", "contractor_name"),
+            ("Принял (Заказчик):", "customer_name"),
+        ]):
+            sig_tbl.rows[i].cells[0].text = role
+            sig_tbl.rows[i].cells[1].text = project_data.get(name_key, "")
+            sig_tbl.rows[i].cells[2].text = "____________ М.П."
+
+        return self._save_document(doc, "KS2", project_data.get("code", "PROJ"))
+
+    def generate_purge_act(self, project_data: Dict, purge_data: Dict) -> str:
+        """
+        Акт продувки и осушки газопровода.
+        СП РК 2.04-103-2013* п.10.5
+        """
+        doc = Document()
+
+        title = doc.add_heading("АКТ ПРОДУВКИ И ОСУШКИ ТРУБОПРОВОДА", 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        doc.add_paragraph()
+        doc.add_paragraph(
+            f"Объект: {project_data.get('name', '')}\n"
+            f"Шифр: {project_data.get('code', '')}\n"
+            f"Дата: {purge_data.get('date', datetime.now().strftime('%d.%m.%Y'))}"
+        )
+
+        doc.add_paragraph()
+        doc.add_heading("Характеристики участка:", level=2)
+        p_tbl = doc.add_table(rows=5, cols=2)
+        p_tbl.style = "Table Grid"
+        _set_table_borders(p_tbl)
+        for i, (lbl, val) in enumerate([
+            ("Участок (ПК):", purge_data.get("section_chainage", "")),
+            ("Длина участка:", f"{purge_data.get('length_m', '')} м"),
+            ("Диаметр:", f"DN{project_data.get('diameter_mm', '')} мм"),
+            ("Давление продувки:", f"{purge_data.get('purge_pressure_mpa', '')} МПа"),
+            ("Продолжительность:", f"{purge_data.get('duration_min', '')} мин"),
+        ]):
+            p_tbl.rows[i].cells[0].text = lbl
+            p_tbl.rows[i].cells[0].paragraphs[0].runs[0].bold = True
+            p_tbl.rows[i].cells[1].text = str(val)
+
+        doc.add_paragraph()
+        doc.add_heading("Результаты:", level=2)
+        doc.add_paragraph(
+            f"Продувочная среда: {purge_data.get('purge_medium', 'сжатый воздух / инертный газ')}\n"
+            f"Точка росы после осушки: {purge_data.get('dew_point', '−20')} °C\n"
+            f"Результат: {purge_data.get('result', 'Продувка и осушка выполнены. Трубопровод подготовлен к испытаниям.')}"
+        )
+
+        doc.add_paragraph()
+        doc.add_paragraph("Нормативный документ: СП РК 2.04-103-2013* п.10.5, ВСН 012-88")
+        doc.add_paragraph()
+
+        sig2 = doc.add_table(rows=2, cols=3)
+        sig2.style = "Table Grid"
+        _set_table_borders(sig2)
+        sig2.rows[0].cells[0].text = "Производитель работ:"
+        sig2.rows[0].cells[1].text = purge_data.get("foreman", "")
+        sig2.rows[0].cells[2].text = "____________"
+        sig2.rows[1].cells[0].text = "Технический надзор:"
+        sig2.rows[1].cells[1].text = project_data.get("technical_supervisor", "")
+        sig2.rows[1].cells[2].text = "____________"
+
+        return self._save_document(doc, "PurgeAct", project_data.get("code", "PROJ"))
+
 
     # ─── ППР и техкарты ────────────────────────────────────────────────────────
 
@@ -760,6 +988,14 @@ class DocumentGenerator:
 
         phase_slug = phase.value.replace("_", "-")
         return self._save_document(doc, f"TK_{phase_slug}", project_data.get("code", "PROJ"))
+
+
+def _number_to_words(amount: float) -> str:
+    """Сумма прописью (упрощённо, целые тысячи)."""
+    try:
+        return f"{amount:,.2f}"
+    except Exception:
+        return str(amount)
 
 
 def _month_ru(month: int) -> str:

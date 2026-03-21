@@ -344,9 +344,28 @@ function ModalShell({ title, onClose, children }) {
 
 // ─── Строка документа ─────────────────────────────────────────────────────────
 
-function DocRow({ doc, onAiCheck }) {
+// Порядок переходов статусов для workflow
+const STATUS_NEXT = {
+  draft:    { value: 'review',    label: 'На проверку →' },
+  review:   { value: 'approved',  label: 'Согласовать →' },
+  approved: { value: 'signed',    label: 'Подписать →' },
+  signed:   null,
+  rejected: { value: 'draft',     label: 'Вернуть в черновик' },
+  archived: null,
+}
+
+function DocRow({ doc }) {
+  const queryClient = useQueryClient()
   const [aiResult, setAiResult] = useState(null)
   const [checking, setChecking] = useState(false)
+  const [showSignModal, setShowSignModal] = useState(false)
+  const [signedBy, setSignedBy] = useState('')
+
+  const statusMut = useMutation({
+    mutationFn: ({ status, signed_by }) =>
+      documentsApi.updateStatus(doc.id, { status, signed_by: signed_by || undefined }),
+    onSuccess: () => queryClient.invalidateQueries(['documents']),
+  })
 
   async function handleAiCheck() {
     setChecking(true)
@@ -360,6 +379,8 @@ function DocRow({ doc, onAiCheck }) {
     }
   }
 
+  const next = STATUS_NEXT[doc.status]
+
   return (
     <div className="border border-slate-100 rounded-xl p-3 space-y-2 hover:border-slate-200 transition-colors">
       <div className="flex items-start justify-between gap-3">
@@ -367,7 +388,7 @@ function DocRow({ doc, onAiCheck }) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-slate-800 truncate">{doc.title}</span>
             {doc.document_number && (
-              <span className="text-xs text-slate-400">#{doc.document_number}</span>
+              <span className="text-xs text-slate-400">№{doc.document_number}</span>
             )}
             {doc.auto_generated && (
               <span className="flex items-center gap-1 text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-md">
@@ -375,7 +396,7 @@ function DocRow({ doc, onAiCheck }) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+          <div className="flex items-center gap-3 mt-1 text-xs text-slate-400 flex-wrap">
             <span className={`px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[doc.status] || ''}`}>
               {STATUS_LABELS[doc.status] || doc.status}
             </span>
@@ -386,13 +407,23 @@ function DocRow({ doc, onAiCheck }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+          {/* Workflow кнопка */}
+          {next && (
+            <button
+              onClick={() => next.value === 'signed' ? setShowSignModal(true) : statusMut.mutate({ status: next.value })}
+              disabled={statusMut.isPending}
+              title={next.label}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {statusMut.isPending ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+              {next.label}
+            </button>
+          )}
           {/* Скачать DOCX */}
           <a
             href={`${documentsApi.download(doc.id)}?format=docx`}
-            target="_blank"
-            rel="noreferrer"
-            title="Скачать DOCX"
+            target="_blank" rel="noreferrer" title="Скачать DOCX"
             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
           >
             <Download size={15} />
@@ -400,18 +431,15 @@ function DocRow({ doc, onAiCheck }) {
           {/* Скачать PDF */}
           <a
             href={`${documentsApi.download(doc.id)}?format=pdf`}
-            target="_blank"
-            rel="noreferrer"
-            title="Скачать PDF"
+            target="_blank" rel="noreferrer" title="Скачать PDF"
             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
           >
             <FileText size={15} />
           </a>
           {/* Проверить AI */}
           <button
-            onClick={handleAiCheck}
-            disabled={checking}
-            title="Проверить через AI"
+            onClick={handleAiCheck} disabled={checking}
+            title="Проверить через AI (агент КК)"
             className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
           >
             {checking ? <Loader2 size={15} className="animate-spin" /> : <Shield size={15} />}
@@ -423,6 +451,31 @@ function DocRow({ doc, onAiCheck }) {
       {aiResult && (
         <div className="text-xs bg-purple-50 text-purple-800 rounded-lg px-3 py-2 leading-relaxed">
           {aiResult}
+        </div>
+      )}
+
+      {/* Модал подписания */}
+      {showSignModal && (
+        <div className="bg-slate-50 rounded-lg p-3 space-y-2 text-sm">
+          <p className="font-medium text-slate-700">Подписание документа</p>
+          <input
+            value={signedBy}
+            onChange={e => setSignedBy(e.target.value)}
+            placeholder="ФИО подписанта"
+            className="w-full border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 text-sm"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => { statusMut.mutate({ status: 'signed', signed_by: signedBy }); setShowSignModal(false) }}
+              disabled={!signedBy}
+              className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Подписать
+            </button>
+            <button onClick={() => setShowSignModal(false)} className="px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-200 rounded-lg">
+              Отмена
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -482,6 +535,21 @@ export default function Documents() {
   // Генерация ОЖР
   const ojrMut = useMutation({
     mutationFn: () => documentsApi.generateOjr({ project_id: projectId }),
+    onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
+  })
+
+  const weldJournalMut = useMutation({
+    mutationFn: () => documentsApi.generateWeldingJournal({ project_id: projectId }),
+    onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
+  })
+
+  const purgeMut = useMutation({
+    mutationFn: () => documentsApi.generatePurgeAct({ project_id: projectId, section_chainage: 'по проекту' }),
+    onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
+  })
+
+  const ks2Mut = useMutation({
+    mutationFn: () => documentsApi.generateKs2({ project_id: projectId }),
     onSuccess: () => queryClient.invalidateQueries(['documents', projectId]),
   })
 
@@ -587,28 +655,13 @@ export default function Documents() {
               <span className="text-sm font-medium text-slate-700">Сформировать документ</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              <GenButton
-                label="ОЖР"
-                loading={ojrMut.isPending}
-                onClick={() => ojrMut.mutate()}
-                title="Общий журнал работ"
-              />
-              <GenButton
-                label="АОСР"
-                onClick={() => setModal('aosr')}
-                title="Акт освидетельствования скрытых работ"
-              />
-              <GenButton
-                label="Гидроиспытания"
-                onClick={() => setModal('hydraulic')}
-                title="Акт гидравлических испытаний"
-              />
-              <GenButton
-                label="КС-11"
-                loading={ks11Mut.isPending}
-                onClick={() => ks11Mut.mutate()}
-                title="Акт приёмки построенного объекта"
-              />
+              <GenButton label="ОЖР" loading={ojrMut.isPending} onClick={() => ojrMut.mutate()} title="Общий журнал работ" />
+              <GenButton label="Журнал сварки" loading={weldJournalMut.isPending} onClick={() => weldJournalMut.mutate()} title="Журнал производства сварочных работ" />
+              <GenButton label="АОСР" onClick={() => setModal('aosr')} title="Акт освидетельствования скрытых работ" />
+              <GenButton label="Гидроиспытания" onClick={() => setModal('hydraulic')} title="Акт гидравлических испытаний" />
+              <GenButton label="Акт продувки" loading={purgeMut.isPending} onClick={() => purgeMut.mutate()} title="Акт продувки и осушки газопровода" />
+              <GenButton label="КС-2" loading={ks2Mut.isPending} onClick={() => ks2Mut.mutate()} title="Акт о приёмке выполненных работ (КС-2)" />
+              <GenButton label="КС-11" loading={ks11Mut.isPending} onClick={() => ks11Mut.mutate()} title="Акт приёмки построенного объекта" />
               <div className="w-px bg-slate-200 self-stretch mx-1" />
               <GenButton
                 label="ППР"

@@ -1,7 +1,43 @@
 import { useQuery } from '@tanstack/react-query'
 import { projectsApi, agentsApi } from '../utils/api'
 import api from '../utils/api'
-import { FolderOpen, FileText, Users, CheckCircle, ClipboardList, Building2 } from 'lucide-react'
+import { FolderOpen, FileText, Users, CheckCircle, ClipboardList, Building2, TrendingUp } from 'lucide-react'
+
+function ProjectProgressRow({ project }) {
+  const { data } = useQuery({
+    queryKey: ['progress', project.id],
+    queryFn: () => projectsApi.getProgress(project.id).then(r => r.data),
+    staleTime: 60_000,
+  })
+  const pct = data?.overall_pct ?? null
+  const done = data?.overall_done_km ?? 0
+  const color = pct === null ? 'bg-slate-200'
+    : pct >= 100 ? 'bg-green-500'
+    : pct >= 60  ? 'bg-blue-500'
+    : pct >= 20  ? 'bg-amber-400'
+    : 'bg-orange-400'
+  const textC = pct === null ? 'text-slate-400'
+    : pct >= 100 ? 'text-green-700'
+    : pct >= 60  ? 'text-blue-700'
+    : pct >= 20  ? 'text-amber-700'
+    : 'text-orange-600'
+  return (
+    <a href={`/projects/${project.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors group">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-slate-800 truncate group-hover:text-blue-700">{project.name}</div>
+        <div className="text-xs text-slate-400 mt-0.5">{project.code} · {project.region || '—'}</div>
+        <div className="h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden w-full">
+          <div className={`h-full rounded-full transition-all duration-700 ${color}`}
+            style={{ width: `${Math.min(pct ?? 0, 100)}%` }} />
+        </div>
+      </div>
+      <div className="text-right shrink-0">
+        <div className={`text-base font-bold ${textC}`}>{pct !== null ? `${pct}%` : '—'}</div>
+        <div className="text-xs text-slate-400">{done} км</div>
+      </div>
+    </a>
+  )
+}
 
 const STATUS_LABELS = {
   initiation: 'Инициация',
@@ -140,6 +176,24 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Progress by active projects */}
+      {projects.filter(p => !['completed','suspended'].includes(p.status)).length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200">
+          <div className="px-6 py-4 border-b border-slate-200 flex items-center gap-2">
+            <TrendingUp size={18} className="text-blue-500" />
+            <h3 className="font-semibold text-slate-800">Прогресс строительства</h3>
+            <span className="ml-auto text-xs text-slate-400">% от общей длины трассы</span>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {projects
+              .filter(p => !['completed','suspended'].includes(p.status))
+              .slice(0, 8)
+              .map(p => <ProjectProgressRow key={p.id} project={p} />)
+            }
+          </div>
+        </div>
+      )}
 
       {/* Agents team preview */}
       <div className="bg-white rounded-xl border border-slate-200">

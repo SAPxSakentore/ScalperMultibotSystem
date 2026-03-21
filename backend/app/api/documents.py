@@ -44,6 +44,38 @@ class GenerateOJRRequest(BaseModel):
     entries: Optional[List[Dict]] = None
 
 
+class GenerateWeldingJournalRequest(BaseModel):
+    project_id: str
+    entries: Optional[List[Dict]] = None
+
+
+class GenerateKS2Request(BaseModel):
+    project_id: str
+    period: Optional[str] = None
+    contract_number: Optional[str] = None
+    total_amount: Optional[str] = None
+    works: Optional[List[Dict]] = None
+
+
+class GeneratePurgeActRequest(BaseModel):
+    project_id: str
+    section_chainage: str
+    length_m: Optional[float] = None
+    purge_pressure_mpa: Optional[float] = None
+    duration_min: Optional[int] = None
+    purge_medium: Optional[str] = "сжатый воздух"
+    dew_point: Optional[str] = "−20"
+    result: Optional[str] = None
+    date: Optional[str] = None
+    foreman: Optional[str] = None
+
+
+class UpdateDocumentStatusRequest(BaseModel):
+    status: DocumentStatus
+    signed_by: Optional[str] = None
+    document_number: Optional[str] = None
+
+
 class GeneratePPRRequest(BaseModel):
     project_id: str
     installation_method: Optional[str] = "открытая траншея"
@@ -281,6 +313,92 @@ async def generate_tech_card(request: GenerateTechCardRequest, db: AsyncSession 
         status=DocumentStatus.DRAFT,
     )
     db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/welding-journal", response_model=DocumentResponse)
+async def generate_welding_journal(request: GenerateWeldingJournalRequest, db: AsyncSession = Depends(get_db)):
+    """Сгенерировать Журнал производства сварочных работ."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    file_path = document_generator.generate_welding_journal(project_dict, request.entries or [])
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.WELDING_JOURNAL,
+        title=f"Журнал сварочных работ — {project.name}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        normative_refs=["ВСН 012-88", "РД РК 3.01.001-2019"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/ks2", response_model=DocumentResponse)
+async def generate_ks2(request: GenerateKS2Request, db: AsyncSession = Depends(get_db)):
+    """Сгенерировать Акт о приёмке выполненных работ (КС-2)."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    ks2_dict = request.model_dump(exclude={"project_id"})
+    file_path = document_generator.generate_ks2(project_dict, ks2_dict)
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.KS2,
+        title=f"КС-2 Акт выполненных работ — {project.name}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        content_json=ks2_dict,
+        normative_refs=["Приказ МФ РК", "СНиП РК 1.01.12-2009"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/generate/purge-act", response_model=DocumentResponse)
+async def generate_purge_act(request: GeneratePurgeActRequest, db: AsyncSession = Depends(get_db)):
+    """Сгенерировать Акт продувки и осушки газопровода."""
+    project = await _get_project_or_404(request.project_id, db)
+    project_dict = _project_to_dict(project)
+    purge_dict = request.model_dump(exclude={"project_id"})
+    file_path = document_generator.generate_purge_act(project_dict, purge_dict)
+    doc = Document(
+        project_id=project.id,
+        document_type=DocumentType.PURGE_ACT,
+        title=f"Акт продувки — ПК {request.section_chainage}",
+        file_path=file_path, file_format="docx", auto_generated=True,
+        content_json=purge_dict,
+        normative_refs=["СП РК 2.04-103-2013* п.10.5"],
+        status=DocumentStatus.DRAFT,
+    )
+    db.add(doc)
+    await db.flush()
+    await db.refresh(doc)
+    return doc
+
+
+@router.patch("/{doc_id}/status", response_model=DocumentResponse)
+async def update_document_status(
+    doc_id: str,
+    request: UpdateDocumentStatusRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Обновить статус документа (черновик → проверка → согласован → подписан)."""
+    doc = await db.get(Document, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден")
+    doc.status = request.status
+    if request.signed_by:
+        doc.approved_by = request.signed_by
+        doc.signed_date = datetime.utcnow()
+    if request.document_number:
+        doc.document_number = request.document_number
+    doc.updated_at = datetime.utcnow()
     await db.flush()
     await db.refresh(doc)
     return doc
